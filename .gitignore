@@ -1,0 +1,57 @@
+# === PRIVATE DATA — must never go into git ===
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+energie.db
+
+# meter photos and Shelly app screenshots (meter numbers, network operator ids)
+hodiny/
+screenshots/
+photos/
+*.jpg
+*.JPG
+*.jpeg
+*.heic
+# hand-checked readings, eval results
+data/
+# the user's own requests and the decisions taken (docs/energie-design.md is the public part)
+docs/history.md
+*.csv
+*.CSV
+
+# collector: device IPs and its database
+collector/collector.toml
+collector/*.db
+
+# old prototype and exported reports
+/app/
+/tools/
+/Claude outputs/
+reports/
+
+# === Python ===
+/.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+venv/
+env/
+
+# === IDE and OS ===
+/.idea/
+/.junie/
+/.claude/
+.vscode/
+*.iml
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# === local settings ===
+.env
+*.local

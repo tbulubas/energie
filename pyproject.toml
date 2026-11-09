@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "energie"
+version = "0.1.0"
+description = "Local-first home energy analysis: meter readings, Shelly plugs and gas, read by a local Gemma (FastAPI + SQLite + Ollama)"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Taras Bulubas" }]
+license = "LicenseRef-All-Rights-Reserved"
+license-files = ["LICENSE"]
+classifiers = ["Private :: Do Not Upload"]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "python-multipart>=0.0.9",
+    "requests>=2.31",
+    "pandas>=2.2",
+    "pillow>=10.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx2>=2.16"]
+
+[project.scripts]
+energie = "energie.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+energie = ["static/*", "static/vendor/*", "static/i18n/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

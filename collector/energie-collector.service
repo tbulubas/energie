@@ -1,0 +1,19 @@
+# Copyright (c) 2026 Taras Bulubas. All rights reserved.
+# Use requires prior written permission; see LICENSE.
+
+[Unit]
+Description=Energie collector (Shelly plugs and gas meter)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/energie-collector
+ExecStart=/usr/bin/python3 /opt/energie-collector/collector.py run
+Restart=always
+RestartSec=10
+User=energie
+# GPIO for the gas meter:
+SupplementaryGroups=gpio
+
+[Install]
+WantedBy=multi-user.target

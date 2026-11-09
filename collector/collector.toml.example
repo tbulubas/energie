@@ -1,0 +1,20 @@
+# Copy to collector.toml and adjust.
+# Find the IP addresses with:  python3 collector.py discover 192.168.178.0/24
+# Give the plugs a fixed IP in the router (FritzBox: "always assign this device the same IPv4 address").
+
+db = "/opt/energie-collector/collector.db"   # on a Pi better on a USB stick/SSD than on the SD card
+interval_s = 60
+port = 8600
+
+[devices]
+# "Name as in the Shelly app" = "IP address"
+"Fridge-Kitchen"  = "192.168.178.xx"
+"Freezer-Cellar"  = "192.168.178.xx"
+# later the whole house:
+# "House-3EM"     = "192.168.178.xx"
+
+[gas]
+enabled = false          # true = reed contact on the gas meter wired to a GPIO pin (Raspberry Pi only)
+pin = 17                 # BCM number; contact between GPIO17 and GND (internal pull-up)
+m3_per_pulse = 0.1       # as printed on the meter, e.g. "1 imp = 0,1 m3"
+debounce_s = 0.1

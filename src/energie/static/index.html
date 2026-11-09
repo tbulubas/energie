@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<!-- Copyright (c) 2026 Taras Bulubas. All rights reserved. Use requires prior written permission; see LICENSE. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Energie</title>
+<script src="/static/vendor/chart.umd.js"></script>
+<style>
+  :root { --bg:#0f1420; --card:#1a2233; --text:#e8ecf4; --muted:#8b96ab; --accent:#4f8cff;
+          --orange:#f08a4b; --green:#3ecf8e; --red:#ff6b6b; --yellow:#f2c14e; --border:#2a3450; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; align-items:center; gap:16px; padding:14px 24px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  header h1 { font-size:20px; margin:0 16px 0 0; }
+  nav button { background:none; border:none; color:var(--muted); font-size:15px; padding:8px 14px; cursor:pointer; border-radius:8px; }
+  nav button.active { color:var(--text); background:var(--card); }
+  nav .badge { background:var(--orange); color:#111; border-radius:9px; padding:0 6px; font-size:12px; margin-left:4px; }
+  .hright { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:13px; color:var(--muted); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; background:var(--muted); }
+  .dot.ok { background:var(--green); } .dot.bad { background:var(--red); }
+  main { padding:24px; max-width:1100px; margin:0 auto; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:16px; }
+  .cards .card { margin-bottom:0; }
+  .card .label { color:var(--muted); font-size:13px; margin-bottom:6px; }
+  .card .value { font-size:26px; font-weight:600; }
+  .card .sub { color:var(--muted); font-size:12.5px; margin-top:4px; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:800px){ .row { grid-template-columns:1fr; } }
+  .chartbox { position:relative; height:280px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; }
+  td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  select, input, button.btn { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:7px 10px; font-size:14px; }
+  button.btn { cursor:pointer; } button.btn.primary { background:var(--accent); border-color:var(--accent); }
+  button.btn.ok { border-color:var(--green); } button.btn.no { border-color:var(--red); }
+  .toolbar { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center; }
+  .hidden { display:none !important; }
+  h2 { font-size:17px; margin:0 0 4px; } .hint { color:var(--muted); font-size:13px; margin:0 0 12px; }
+  ul.ins { margin:0; padding-left:20px; line-height:1.55; } ul.ins li { margin:4px 0; }
+  .msg { padding:10px 14px; border-radius:8px; background:var(--card); border:1px solid var(--border); margin-bottom:14px; }
+  .issue { color:var(--yellow); font-size:13px; }
+  .pend { display:grid; grid-template-columns:220px 1fr; gap:16px; }
+  .pend img { width:100%; border-radius:8px; border:1px solid var(--border); cursor:zoom-in; }
+  .thumbs { display:flex; flex-direction:column; gap:6px; }
+  .comment { white-space:pre-wrap; line-height:1.55; }
+  .progress { background:var(--bg); border-radius:6px; height:8px; overflow:hidden; margin:8px 0; }
+  .progress > div { height:100%; background:var(--accent); width:0; transition:width .3s; }
+  .form { display:grid; grid-template-columns:260px 1fr; gap:10px 16px; align-items:center; }
+  .form input[type=text] { width:100%; }
+  .form h3 { grid-column:1 / -1; font-size:14px; color:var(--muted); font-weight:500; margin:12px 0 0; }
+  a.file { color:var(--accent); }
+  #zoom { position:fixed; inset:0; background:rgba(0,0,0,.85); display:flex; align-items:center; justify-content:center; z-index:9; }
+  #zoom img { max-width:95vw; max-height:95vh; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ <span data-i18n="app_title">Energie</span></h1>
+  <nav>
+    <button data-tab="overview" class="active" data-i18n="nav_overview"></button>
+    <button data-tab="devices" data-i18n="nav_devices"></button>
+    <button data-tab="readings" data-i18n="nav_readings"></button>
+    <button data-tab="review"><span data-i18n="nav_review"></span><span id="pendBadge" class="badge hidden"></span></button>
+    <button data-tab="import" data-i18n="nav_import"></button>
+    <button data-tab="collector" data-i18n="nav_collector"></button>
+    <button data-tab="settings" data-i18n="nav_settings"></button>
+  </nav>
+  <div class="hright">
+    <span id="gemmaStatus"><span class="dot"></span>Gemma</span>
+    <span id="collStatus"><span class="dot"></span><span data-i18n="nav_collector"></span></span>
+    <select id="langSel"><option value="en">EN</option><option value="de">DE</option><option value="sk">SK</option></select>
+  </div>
+</header>
+<main>
+
+<section id="tab-overview">
+  <div class="cards">
+    <div class="card"><div class="label" data-i18n="kpi_electricity"></div><div class="value" id="kEl">–</div><div class="sub" id="kElSub"></div></div>
+    <div class="card"><div class="label" data-i18n="kpi_coverage"></div><div class="value" id="kCov">–</div><div class="sub" id="kCovSub"></div></div>
+    <div class="card"><div class="label" data-i18n="kpi_gas"></div><div class="value" id="kGas">–</div><div class="sub" id="kGasSub"></div></div>
+    <div class="card"><div class="label" data-i18n="kpi_period"></div><div class="value" id="kDays">–</div><div class="sub" id="kDaysSub"></div></div>
+  </div>
+  <div class="card"><h2 data-i18n="findings"></h2><p class="hint" data-i18n="findings_hint"></p><ul class="ins" id="insights"></ul></div>
+  <div class="card">
+    <div class="toolbar" style="margin:0 0 8px"><h2 style="margin:0" data-i18n="commentary"></h2>
+      <button class="btn" id="btnComment" onclick="loadComment()" data-i18n="commentary_btn"></button></div>
+    <div class="comment hint" id="comment" data-i18n="commentary_hint"></div>
+  </div>
+  <div class="card"><h2 data-i18n="cov_title"></h2><p class="hint" data-i18n="cov_hint"></p>
+    <div class="chartbox"><canvas id="covChart"></canvas></div></div>
+  <div class="row">
+    <div class="card"><h2 data-i18n="el_title"></h2><p class="hint" data-i18n="el_hint"></p><div class="chartbox"><canvas id="elChart"></canvas></div></div>
+    <div class="card"><h2 data-i18n="gas_title"></h2><p class="hint" id="gasHint"></p><div class="chartbox"><canvas id="gasChart"></canvas></div></div>
+  </div>
+</section>
+
+<section id="tab-devices" class="hidden">
+  <div class="card"><h2 data-i18n="dev_year_title"></h2><p class="hint" data-i18n="dev_year_hint"></p>
+    <div class="chartbox" style="height:320px"><canvas id="devChart"></canvas></div></div>
+  <div class="card"><h2 data-i18n="hourly_title"></h2>
+    <div class="toolbar" style="margin:8px 0"><select id="hourDev"></select>
+      <select id="hourDays"><option value="2"></option><option value="7" selected></option><option value="30"></option></select></div>
+    <div class="chartbox"><canvas id="hourChart"></canvas></div>
+    <p class="hint" id="hourHint" style="margin-top:8px"></p></div>
+  <div class="card"><h2 data-i18n="table_title"></h2><table id="devTable"></table></div>
+</section>
+
+<section id="tab-readings" class="hidden">
+  <div class="toolbar">
+    <select id="rdMeter"><option value="" data-i18n="all_meters"></option><option value="electricity" data-i18n="m_electricity"></option><option value="gas" data-i18n="m_gas"></option></select>
+    <span class="hint" style="margin:0" data-i18n="add_fix"></span>
+    <input id="nTs" placeholder="2026-11-09 07:30" size="16">
+    <select id="nMeter"><option value="electricity" data-i18n="m_electricity"></option><option value="gas" data-i18n="m_gas"></option></select>
+    <input id="nVal" size="10" data-i18n-ph="value_ph">
+    <button class="btn primary" onclick="saveReading()" data-i18n="save"></button>
+  </div>
+  <div class="msg hidden" id="rdMsg"></div>
+  <div class="card"><table id="rdTable"></table></div>
+</section>
+
+<section id="tab-review" class="hidden">
+  <p class="hint" data-i18n="review_hint"></p>
+  <div id="pendList"></div>
+</section>
+
+<section id="tab-import" class="hidden">
+  <div class="card"><h2 data-i18n="new_files_title"></h2>
+    <p class="hint" id="newInfo"></p>
+    <button class="btn primary" onclick="startScan()" data-i18n="run_gemma"></button>
+    <div class="progress"><div id="scanBar"></div></div>
+    <div class="hint" id="scanInfo"></div>
+    <table id="scanLog"></table></div>
+  <div class="card"><h2 data-i18n="upload_title"></h2>
+    <p class="hint" data-i18n="upload_hint"></p>
+    <div class="toolbar"><select id="upKind"><option value="meter" data-i18n="kind_meter"></option><option value="shelly" data-i18n="kind_shelly"></option></select>
+      <input type="file" id="upFile" accept="image/*" multiple><button class="btn" onclick="upload()" data-i18n="upload_btn"></button></div>
+    <div class="hint" id="upInfo"></div></div>
+</section>
+
+<section id="tab-collector" class="hidden">
+  <div class="card"><h2 data-i18n="coll_title"></h2>
+    <p class="hint" id="collUrl"></p>
+    <div class="toolbar"><button class="btn primary" onclick="doSync()" data-i18n="sync_btn"></button><span class="hint" id="syncInfo" style="margin:0"></span></div>
+    <table id="collTable"></table></div>
+</section>
+
+<section id="tab-settings" class="hidden">
+  <div class="card"><h2 data-i18n="settings_title"></h2><p class="hint" data-i18n="settings_hint"></p>
+    <div class="form" id="setForm"></div>
+    <div class="toolbar" style="margin-top:16px"><button class="btn primary" onclick="saveSettings()" data-i18n="save"></button>
+      <span class="hint" id="setInfo" style="margin:0"></span></div></div>
+</section>
+
+</main>
+<div id="zoom" class="hidden" onclick="this.classList.add('hidden')"><img alt=""></div>
+
+<script>
+// ---------- i18n ----------
+// UI strings live in /static/i18n/<lang>.json as "key": "text with {name} placeholders";
+// en.json is the reference and the fallback for a key missing in another language.
+const LOCALE = {en:'en-GB', de:'de-DE', sk:'sk-SK'};      // supported languages -> number/date locale
+const LANGS = Object.keys(LOCALE);
+let lang = 'en', MSG = {}, MSG_EN = {};
+
+function initialLang() {
+  // ?lang=de overrides the stored choice for this page (links, the README screenshots)
+  const url = new URLSearchParams(location.search).get('lang');
+  if (LANGS.includes(url)) return url;
+  try { const s = localStorage.getItem('lang'); if (LANGS.includes(s)) return s; } catch {}
+  for (const l of navigator.languages || [navigator.language]) {
+    const code = String(l || '').slice(0, 2).toLowerCase();
+    if (LANGS.includes(code)) return code;
+  }
+  return 'en';
+}
+async function fetchMessages(l) {
+  const r = await fetch(`/static/i18n/${l}.json`);
+  if (!r.ok) throw new Error(`/static/i18n/${l}.json: ${r.status}`);
+  return r.json();
+}
+async function setLang(l) {
+  MSG = l === 'en' ? MSG_EN : await fetchMessages(l).catch(e => (console.error(e), MSG_EN));
+  lang = l;
+}
+const has = k => k in MSG || k in MSG_EN;
+// t('days', {n: 3}) -> "3 days"; an array parameter is joined with ", "
+const t = (k, p) => (MSG[k] ?? MSG_EN[k] ?? k).replace(/\{(\w+)\}/g, (m, n) =>
+  p && n in p ? (Array.isArray(p[n]) ? p[n].join(', ') : String(p[n])) : m);
+const $ = s => document.querySelector(s);
+const nf = (x, d=1) => x==null ? '–' : Number(x).toLocaleString(LOCALE[lang], {minimumFractionDigits:d, maximumFractionDigits:d});
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dlabel = s => new Date(s+'T12:00').toLocaleDateString(LOCALE[lang], {weekday:'short', day:'numeric', month:'numeric'});
+// numbers and dates inside findings and issues in the UI language
+const fmtNum = v => Number.isInteger(v) ? nf(v,0) : nf(v, (String(v).split('.')[1]||'').length > 1 ? 2 : 1);
+const fmtVal = v => typeof v === 'number' ? fmtNum(v)
+  : (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? new Date(v+'T12:00').toLocaleDateString(LOCALE[lang])
+  : Array.isArray(v) ? v.map(fmtVal) : v;
+const fmtParams = p => Object.fromEntries(Object.entries(p).map(([k,v]) => [k, fmtVal(v)]));
+const coded = (prefix, i) => {
+  if (!has(prefix + i.code)) return i.code;
+  const p = fmtParams(i);
+  if (Array.isArray(p.items)) p.items = p.items.map(([name, w]) => t('base_load_item', {name, w}));
+  return t(prefix + i.code, p);
+};
+const issueText = i => coded('is_', i);
+const C = {accent:'#4f8cff', orange:'#f08a4b', muted:'#8b96ab', grid:'#2a3450', text:'#e8ecf4'};
+let charts = {}, currentTab = 'overview';
+
+Chart.defaults.color = C.muted; Chart.defaults.borderColor = C.grid;
+Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
+
+function applyI18n() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(e => e.textContent = t(e.dataset.i18n));
+  document.querySelectorAll('[data-i18n-ph]').forEach(e => e.placeholder = t(e.dataset.i18nPh));
+  [...$('#hourDays').options].forEach(o => o.textContent = t('days_opt', {n: o.value}));
+}
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('main section').forEach(x=>x.classList.add('hidden'));
+  b.classList.add('active'); $('#tab-'+b.dataset.tab).classList.remove('hidden');
+  currentTab = b.dataset.tab; load(currentTab);
+  history.replaceState(null, '', '#' + currentTab);    // a reload or a link opens the same tab
+});
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    let d; try { d = (await r.json()).detail; } catch { d = r.statusText; }
+    if (d && typeof d === 'object' && d.code) throw new Error(t('err_'+d.code) + (d.info ? ': '+d.info : ''));
+    throw new Error(typeof d === 'string' ? d : r.statusText);
+  }
+  return r.json();
+}
+function chart(id, cfg) { if (charts[id]) charts[id].destroy(); charts[id] = new Chart($('#'+id), cfg); }
+const barOpts = (unit, extra={}) => Object.assign({responsive:true, maintainAspectRatio:false,
+  plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${nf(c.parsed.y ?? c.parsed.x, 2)} ${unit}`}}},
+  scales:{x:{grid:{display:false}}, y:{beginAtZero:true, title:{display:true,text:unit}}}}, extra);
+
+// ---------- overview ----------
+async function loadOverview() {
+  const ov = await api('/api/overview'), k = ov.kpi;
+  $('#kEl').textContent = k.el_per_day==null ? '–' : `${nf(k.el_per_day)} ${t('kwh_day')}`;
+  $('#kElSub').textContent = k.el_per_year==null ? '' : t('el_sub', {kwh_year: nf(k.el_per_year,0), eur: nf(k.el_eur_year,0)});
+  $('#kCov').textContent = k.coverage==null ? '–' : Math.round(k.coverage*100)+' %';
+  $('#kCovSub').textContent = k.unmetered==null ? '' : t('cov_sub', {kwh: nf(k.unmetered)});
+  $('#kGas').textContent = k.gas_m3_day==null ? '–' : `${nf(k.gas_m3_day,2)} ${t('m3_day')}`;
+  $('#kGasSub').textContent = k.gas_kwh_day==null ? '' : t('gas_sub', {kwh: nf(k.gas_kwh_day)});
+  $('#kDays').textContent = k.days==null ? '–' : t('days', {n: nf(k.days)});
+  $('#kDaysSub').textContent = k.from ? `${fmtVal(k.from)} – ${fmtVal(k.to)}` : '';
+  $('#insights').innerHTML = ov.insights.length ? ov.insights.map(i => `<li>${esc(coded('in_', i))}</li>`).join('')
+    : `<li>${t('no_findings')}</li>`;
+  chart('covChart', {type:'bar', data:{labels:ov.coverage.map(x=>dlabel(x.day)), datasets:[
+      {label:t('legend_shelly'), data:ov.coverage.map(x=>x.shelly), backgroundColor:C.accent, borderRadius:4},
+      {label:t('legend_unmetered'), data:ov.coverage.map(x=>x.rest), backgroundColor:C.orange, borderRadius:4}]},
+    options:barOpts('kWh', {plugins:{legend:{display:true, position:'top', align:'start', labels:{boxWidth:12, color:C.text}},
+      tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${nf(c.parsed.y,1)} kWh`}}},
+      scales:{x:{stacked:true, grid:{display:false}}, y:{stacked:true, beginAtZero:true, title:{display:true,text:'kWh'}}}})});
+  chart('elChart', {type:'bar', data:{labels:ov.electricity.map(x=>dlabel(x.day)),
+    datasets:[{data:ov.electricity.map(x=>x.kwh), backgroundColor:C.accent, borderRadius:4}]}, options:barOpts('kWh')});
+  $('#gasHint').textContent = t('gas_hint', {factor: nf(ov.gas_kwh_per_m3,2)});
+  chart('gasChart', {type:'bar', data:{labels:ov.gas.map(x=>dlabel(x.day)),
+    datasets:[{data:ov.gas.map(x=>x.m3), backgroundColor:C.orange, borderRadius:4}]},
+    options:barOpts('m³', {plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>{const g=ov.gas[c.dataIndex];
+      return [`${nf(g.m3,3)} m³/24 h`, `≈ ${nf(g.kwh,1)} kWh`, t('tt_interval', {hours: nf(g.hours,0)})];}}}}})});
+}
+async function loadComment() {
+  $('#btnComment').disabled = true; $('#comment').textContent = t('commentary_working');
+  try { $('#comment').textContent = (await api('/api/commentary?lang='+lang, {method:'POST'})).text; $('#comment').classList.remove('hint'); }
+  catch (e) { $('#comment').textContent = e.message; }
+  $('#btnComment').disabled = false;
+}
+
+// ---------- devices ----------
+let DEV;
+async function loadDevices() {
+  DEV = await api('/api/devices?days=' + $('#hourDays').value);
+  const st = DEV.stats.filter(r=>r.count>=3);
+  chart('devChart', {type:'bar', data:{labels:st.map(r=>r.name),
+    datasets:[{data:st.map(r=>r.kwh_year), backgroundColor:C.accent, borderRadius:4}]},
+    options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>{const r=st[c.dataIndex]; return [`${nf(r.kwh_year,0)} ${t('col_kwh_year')}`, `Ø ${nf(r.avg_w,0)} W`, `~${nf(r.eur_year,0)} ${t('col_eur_year')}`];}}}},
+      scales:{x:{beginAtZero:true, title:{display:true,text:t('col_kwh_year')}}, y:{grid:{display:false}}}}});
+  const base = Object.fromEntries(DEV.base.map(b=>[b.name, b.base_w]));
+  $('#devTable').innerHTML = `<tr><th>${t('col_device')}</th><th>${t('col_floor')}</th><th class=num>${t('col_kwh_day')}</th><th class=num>${t('col_avg_w')}</th>
+    <th class=num>${t('col_night_w')}</th><th class=num>${t('col_kwh_year')}</th><th class=num>${t('col_eur_year')}</th><th class=num>${t('col_days')}</th></tr>` +
+    DEV.stats.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.floor)}</td><td class=num>${nf(r.mean,2)}</td>
+    <td class=num>${nf(r.avg_w,0)}</td><td class=num>${base[r.name]!=null?nf(base[r.name],0):'–'}</td>
+    <td class=num>${nf(r.kwh_year,0)}</td><td class=num>${nf(r.eur_year,0)}</td><td class=num>${r.count}</td></tr>`).join('');
+  const names = [...new Set(DEV.hourly.map(h=>h.name))].sort();
+  if (!names.length) { $('#hourHint').textContent = t('hourly_empty'); $('#hourDev').innerHTML=''; if (charts.hourChart) charts.hourChart.destroy(); return; }
+  const cur = $('#hourDev').value;
+  $('#hourDev').innerHTML = names.map(n=>`<option ${n===cur?'selected':''}>${esc(n)}</option>`).join('');
+  drawHourly();
+}
+function drawHourly() {
+  const n = $('#hourDev').value, h = DEV.hourly.filter(x=>x.name===n);
+  $('#hourHint').textContent = t('hourly_info', {hours: h.length, kwh: nf(h.reduce((a,x)=>a+x.kwh,0),2)});
+  const lbl = s => { const d = new Date(s); return d.toLocaleDateString(LOCALE[lang], {day:'numeric', month:'numeric'}) + ' ' + d.getHours() + 'h'; };
+  chart('hourChart', {type:'bar', data:{labels:h.map(x=>lbl(x.hour)),
+    datasets:[{data:h.map(x=>x.kwh*1000), backgroundColor:C.accent, borderRadius:2}]},
+    options:barOpts('Wh', {scales:{x:{grid:{display:false}, ticks:{maxTicksLimit:12}}, y:{beginAtZero:true, title:{display:true,text:'Wh'}}}})});
+}
+$('#hourDev').onchange = drawHourly; $('#hourDays').onchange = loadDevices;
+
+// ---------- readings ----------
+const meterName = m => t('m_'+m);
+const noteText = n => { const k = 'note_' + (n || '').replace(/ /g, '_'); return has(k) ? t(k) : n ?? ''; };
+async function loadReadings() {
+  const rows = await api('/api/readings?meter=' + $('#rdMeter').value);
+  $('#rdTable').innerHTML = `<tr><th>${t('col_time')}</th><th>${t('col_meter')}</th><th class=num>${t('col_value')}</th><th>${t('col_method')}</th><th>${t('col_source')}</th><th>${t('col_note')}</th><th></th></tr>` +
+    rows.map(r=>`<tr><td>${esc(r.ts)}</td><td>${esc(meterName(r.meter))}</td><td class=num>${nf(r.value, r.meter==='gas'?3:1)}</td>
+      <td>${esc(t('method_'+r.method))}</td><td>${r.source_file?`<a href="#" class="file" data-zoom="${esc(r.source_file)}">${esc(r.source_file)}</a>`:''}</td>
+      <td class=hint>${esc(noteText(r.note))}</td>
+      <td><button class="btn" data-del-ts="${esc(r.ts)}" data-del-meter="${esc(r.meter)}">✕</button></td></tr>`).join('');
+}
+$('#rdMeter').onchange = loadReadings;
+$('#rdTable').onclick = async e => {
+  const z = e.target.closest('[data-zoom]'); if (z) { e.preventDefault(); zoom(z.dataset.zoom); return; }
+  const d = e.target.closest('[data-del-ts]');
+  if (d && confirm(t('confirm_delete', {meter: meterName(d.dataset.delMeter), time: d.dataset.delTs}))) {
+    await api(`/api/readings?ts=${encodeURIComponent(d.dataset.delTs)}&meter=${d.dataset.delMeter}`, {method:'DELETE'}); loadReadings(); }
+};
+async function saveReading() {
+  try {
+    const r = await api('/api/readings', {method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ts:$('#nTs').value.trim(), meter:$('#nMeter').value, value:parseFloat($('#nVal').value.replace(',','.'))})});
+    $('#rdMsg').classList.toggle('hidden', !r.warnings.length);
+    $('#rdMsg').textContent = t('saved_warn') + r.warnings.map(issueText).join('; ');
+    loadReadings();
+  } catch (e) { $('#rdMsg').classList.remove('hidden'); $('#rdMsg').textContent = e.message; }
+}
+function zoom(name) { $('#zoom img').src = '/api/image?name=' + encodeURIComponent(name); $('#zoom').classList.remove('hidden'); }
+
+// ---------- review ----------
+async function loadReview() {
+  const rows = await api('/api/pending');
+  $('#pendList').innerHTML = rows.length ? rows.map(r => {
+    const imgs = r.files.map(f=>`<img src="/api/image?name=${encodeURIComponent(f)}" data-zoom="${esc(f)}" alt="">`).join('');
+    let body;
+    if (r.kind === 'meter') {
+      body = `<div class="toolbar"><select id="pm${r.id}">${['electricity','gas'].map(m=>`<option value="${m}" ${r.payload.meter===m?'selected':''}>${meterName(m)}</option>`).join('')}</select>
+        <input id="pv${r.id}" value="${r.payload.value}" size="12"> <span class=hint style="margin:0">${r.payload.rolling?t('rolling'):''}</span></div>`;
+    } else {
+      body = r.payload.cards.map(c=>`<div><b>${esc(c.title)}</b> ${c.total_wh==null?'?':nf(c.total_wh,0)} Wh<div class=hint style="margin:2px 0 8px">` +
+        Object.entries(c.devices).map(([n,v])=>`${esc(n)}: ${nf(v,0)} Wh`).join(' · ') + '</div></div>').join('');
+    }
+    return `<div class="card pend"><div class="thumbs">${imgs}</div><div>
+      <h2>${r.kind==='meter'?t('review_meter'):t('review_shelly')} · ${esc(r.ts)}</h2>
+      <div class="issue">${r.issues.map(i=>esc(issueText(i))).join('<br>')}</div><div style="margin:10px 0">${body}</div>
+      <button class="btn ok" data-accept="${r.id}" data-kind="${r.kind}">${t('accept')}</button>
+      <button class="btn no" data-reject="${r.id}">${t('reject')}</button></div></div>`;
+  }).join('') : `<div class="msg">${t('nothing_pending')}</div>`;
+}
+$('#pendList').onclick = async e => {
+  const z = e.target.closest('[data-zoom]'); if (z) { zoom(z.dataset.zoom); return; }
+  const a = e.target.closest('[data-accept]'), x = e.target.closest('[data-reject]');
+  if (a) {
+    const id = a.dataset.accept;
+    const body = a.dataset.kind==='meter' ? {override:{meter:$('#pm'+id).value, value:parseFloat($('#pv'+id).value.replace(',','.'))}} : {};
+    await api(`/api/pending/${id}/accept`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  } else if (x) await api(`/api/pending/${x.dataset.reject}/reject`, {method:'POST'});
+  else return;
+  loadReview(); refreshStatus();
+};
+
+// ---------- import ----------
+async function loadImport() {
+  const s = await refreshStatus();
+  $('#newInfo').textContent = t('new_info', {photos: s.new_meter, screenshots: s.new_shelly, model: s.model});
+  pollScan();
+}
+async function startScan() {
+  try { await api('/api/import/scan', {method:'POST'}); pollScan(); } catch (e) { $('#scanInfo').textContent = e.message; }
+}
+async function pollScan() {
+  const j = await api('/api/import/progress');
+  $('#scanBar').style.width = j.total ? (100*j.done/j.total)+'%' : '0';
+  $('#scanInfo').textContent = j.running ? t('progress', {done: j.done, total: j.total}) : (j.total ? t('done', {done: j.done, total: j.total}) : '');
+  $('#scanLog').innerHTML = j.log.map(r=>`<tr><td>${esc(t('kind_'+r.kind))}</td><td>${esc(r.source.split(';')[0])}${r.source.includes(';')?' …':''}</td>
+    <td>${t('st_'+r.status)}</td><td class=issue>${(r.issues||[]).map(i=>esc(issueText(i))).join('; ')}</td></tr>`).join('');
+  if (j.running && currentTab === 'import') setTimeout(pollScan, 1500); else refreshStatus();
+}
+async function upload() {
+  let n = 0;
+  try {
+    for (const f of $('#upFile').files) { const fd = new FormData(); fd.append('kind', $('#upKind').value); fd.append('file', f);
+      await api('/api/upload', {method:'POST', body:fd}); n++; }
+    $('#upInfo').textContent = t('uploaded', {n});
+  } catch (e) { $('#upInfo').textContent = e.message; }
+  loadImport();
+}
+
+// ---------- collector ----------
+async function loadCollector() {
+  const s = await api('/api/status');
+  if (!s.collector_url) { $('#collUrl').textContent = t('coll_no_url'); $('#collTable').innerHTML = ''; return; }
+  $('#collUrl').textContent = t('coll_addr', {url: s.collector_url}) + (s.collector_last ? t('coll_last', {time: s.collector_last}) : '');
+  const h = await api('/api/collector');
+  if (!h.ok) { $('#collTable').innerHTML = `<tr><td class=issue>${t('coll_unreachable')}${esc(h.error||'')}</td></tr>`; return; }
+  $('#collTable').innerHTML = `<tr><th>${t('col_device')}</th><th>${t('col_ip')}</th><th>${t('col_gen')}</th><th class=num>${t('col_power')}</th><th class=num>${t('col_counter')}</th><th>${t('col_last_read')}</th><th>${t('col_error')}</th></tr>` +
+    h.devices.map(d=>`<tr><td>${esc(d.name)}</td><td>${esc(d.ip)}</td><td>${d.gen??''}</td><td class=num>${nf(d.apower_w,1)}</td>
+      <td class=num>${d.total_wh==null?'–':nf(d.total_wh/1000,2)}</td><td>${esc(d.last_ok||'')}</td><td class=issue>${esc(d.error||'')}</td></tr>`).join('') +
+    (h.gas ? `<tr><td>${t('gas_pulses')}</td><td>GPIO ${esc(h.gas.pin)}</td><td></td><td></td><td class=num>${nf(h.gas.m3,3)} m³</td><td>${esc(h.gas.last_pulse||'')}</td><td></td></tr>` : '');
+}
+async function doSync() {
+  $('#syncInfo').textContent = t('syncing');
+  try { const r = await api('/api/sync', {method:'POST'}); $('#syncInfo').textContent = t('synced', {samples: r.samples, gas: r.gas}); loadCollector(); }
+  catch (e) { $('#syncInfo').textContent = e.message; }
+}
+
+// ---------- settings ----------
+const SETTINGS = [['sec_prices', ['electricity_eur_kwh','gas_eur_kwh','gas_correction_factor','gas_calorific_value']],
+                  ['sec_checks', ['max_daily_electricity','max_daily_gas','auto_accept']],
+                  ['sec_folders', ['photos_dir','screenshots_dir','collector_url']]];
+async function loadSettings() {
+  const s = await api('/api/settings');
+  $('#setForm').innerHTML = SETTINGS.map(([sec, keys]) => `<h3>${t(sec)}</h3>` + keys.map(k => k === 'auto_accept'
+    ? `<label for="set_${k}">${t('s_'+k)}</label><div><input type="checkbox" id="set_${k}" ${s[k]==='1'?'checked':''}></div>`
+    : `<label for="set_${k}">${t('s_'+k)}</label><input type="text" id="set_${k}" value="${esc(s[k])}">`).join('')).join('');
+}
+async function saveSettings() {
+  const v = {};
+  SETTINGS.flatMap(x=>x[1]).forEach(k => v[k] = k==='auto_accept' ? ($('#set_'+k).checked?'1':'0') : $('#set_'+k).value.trim());
+  try { await api('/api/settings', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(v)});
+        $('#setInfo').textContent = t('settings_saved'); loadSettings(); refreshStatus(); }
+  catch (e) { $('#setInfo').textContent = e.message; }
+}
+
+async function refreshStatus() {
+  const s = await api('/api/status');
+  $('#gemmaStatus').innerHTML = `<span class="dot ${s.gemma?'ok':'bad'}"></span>Gemma`;
+  $('#gemmaStatus').title = s.gemma ? s.model : t('gemma_off');
+  $('#collStatus').querySelector('.dot').className = 'dot ' + (s.collector_last ? 'ok' : '');
+  $('#collStatus').title = s.collector_last ? t('coll_ok', {time: s.collector_last}) : t('coll_none');
+  $('#pendBadge').textContent = s.pending; $('#pendBadge').classList.toggle('hidden', !s.pending);
+  return s;
+}
+
+function load(tab) {
+  ({overview:loadOverview, devices:loadDevices, readings:loadReadings, review:loadReview,
+    import:loadImport, collector:loadCollector, settings:loadSettings})[tab]().catch(e => console.error(e));
+}
+$('#langSel').onchange = async () => {
+  await setLang($('#langSel').value);
+  try { localStorage.setItem('lang', lang); } catch {}
+  history.replaceState(null, '', location.pathname + location.hash);   // drop a ?lang= from a link
+  applyI18n(); load(currentTab); refreshStatus();
+};
+const tabButton = () => document.querySelector(`nav button[data-tab="${CSS.escape(location.hash.slice(1))}"]`);
+window.onhashchange = () => { const b = tabButton(); if (b && b.dataset.tab !== currentTab) b.click(); };
+(async () => {
+  try { MSG_EN = await fetchMessages('en'); } catch (e) { console.error(e); }
+  await setLang(initialLang());
+  $('#langSel').value = lang;
+  applyI18n(); refreshStatus();
+  const startBtn = tabButton();
+  if (startBtn) startBtn.click(); else load('overview');
+})();
+</script>
+</body>
+</html>
