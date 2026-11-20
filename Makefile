@@ -11,6 +11,7 @@
 #   make run       start the web app at http://localhost:8510 (override with ARGS="...")
 #   make demo      try the app on invented data at http://localhost:8511
 #   make screenshots  retake the README screenshots from the demo (Edge or Chrome)
+#   make deploy    set up the collector on the Raspberry Pi with Ansible (WSL on Windows)
 #
 # The project uses Python 3.12 (PYTHON_VERSION). The base interpreter is found
 # with the py launcher on Windows and as python3.12 elsewhere, independently of
@@ -23,9 +24,12 @@ ifeq ($(OS),Windows_NT)
     .SHELLFLAGS := /c
     PYTHON := py -$(PYTHON_VERSION)
     VENV_PY := .venv\Scripts\python.exe
+    # Ansible does not run on Windows: the playbooks run in WSL (bash -l for ~/.local/bin)
+    IN_DEPLOY := wsl --cd "$(CURDIR)/deploy" bash -lc
 else
     PYTHON := python$(PYTHON_VERSION)
     VENV_PY := .venv/bin/python
+    IN_DEPLOY := cd deploy && bash -lc
 endif
 
 VENV_CFG := .venv/pyvenv.cfg
@@ -33,7 +37,7 @@ STAMP := .venv/.installed
 ARGS ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help venv test run demo screenshots clean distclean recreate
+.PHONY: help venv test run demo screenshots deploy discover clean distclean recreate
 
 help:
 	@echo Targets:
@@ -42,6 +46,8 @@ help:
 	@echo   make run        start the web app at http://localhost:8510; options with ARGS="--port ..."
 	@echo   make demo       try the app on invented data at http://localhost:8511 (your database is not used)
 	@echo   make screenshots  retake the README screenshots in docs/images from the demo
+	@echo   make deploy     set up the collector on the Raspberry Pi (Ansible; deploy/README.md)
+	@echo   make discover NET=192.168.178.0/24  list the Shelly devices for deploy/inventory.yml
 	@echo   make clean      remove caches and build metadata
 	@echo   make distclean  clean and remove .venv
 	@echo   make recreate   distclean, then venv
@@ -76,6 +82,16 @@ demo: $(STAMP)
 
 screenshots: $(STAMP)
 	$(VENV_PY) scripts/readme_screenshots.py $(ARGS)
+
+INVENTORY_CHECK := $(PYTHON) -c "import os, sys; os.path.exists('deploy/inventory.yml') or sys.exit('Copy deploy/inventory.example.yml to deploy/inventory.yml and fill it in first')"
+
+deploy:
+	$(INVENTORY_CHECK)
+	$(IN_DEPLOY) "ansible-playbook -i inventory.yml site.yml --ask-become-pass $(ARGS)"
+
+discover:
+	$(INVENTORY_CHECK)
+	$(IN_DEPLOY) "ansible-playbook -i inventory.yml discover.yml -e net=$(NET)"
 
 clean:
 	$(PYTHON) -c "import glob, shutil; [shutil.rmtree(p, ignore_errors=True) for p in ['.pytest_cache', 'build', *glob.glob('src/*.egg-info'), *glob.glob('*/**/__pycache__', recursive=True)]]"

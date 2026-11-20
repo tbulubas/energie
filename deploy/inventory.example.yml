@@ -1,0 +1,34 @@
+# Copyright (c) 2026 Taras Bulubas. All rights reserved.
+# Use requires prior written permission; see LICENSE.
+
+# Copy to inventory.yml and fill in. git ignores inventory.yml: it holds the addresses of your devices.
+# Every setting with its default: roles/*/defaults/main.yml.
+
+all:
+  children:
+    collector:
+      hosts:
+        energy-pi:
+          ansible_host: 192.168.178.50         # fixed IP of the Pi (WSL usually cannot resolve .local)
+          ansible_user: pi                     # the user created in Raspberry Pi Imager
+          ansible_ssh_common_args: -o StrictHostKeyChecking=accept-new
+
+          # The PC's time zone: the collector stores local time, the app compares it with photo times.
+          energie_timezone: Europe/Berlin
+
+          # Shelly devices: "Name as in the Shelly app": "IP address" (make discover NET=... lists them).
+          # Give them a fixed IP in the router.
+          collector_devices:
+            "Fridge-Kitchen": 192.168.178.xx
+            "Freezer-Cellar": 192.168.178.xx
+
+          # Gas meter: reed contact between GPIO17 and GND, then calibrate once (see deploy/README.md).
+          collector_gas_enabled: false
+          collector_gas_pin: 17
+          collector_gas_m3_per_pulse: 0.1
+
+          # Database on a USB stick/SSD instead of the SD card (mount it first):
+          # collector_db: /mnt/usb/energie/collector.db
+
+          # Nightly copy to the NAS over SSH (the playbook prints the key to authorize there):
+          # backup_rsync_target: backup@odroid.local:/srv/backup/energie/

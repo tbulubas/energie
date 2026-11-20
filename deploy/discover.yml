@@ -1,0 +1,35 @@
+# Copyright (c) 2026 Taras Bulubas. All rights reserved.
+# Use requires prior written permission; see LICENSE.
+
+# Finds the Shelly devices on the network from the Pi and prints them ready to paste into
+# inventory.yml under collector_devices. Needs no installed collector.
+#
+#   make discover NET=192.168.178.0/24
+
+- name: Find the Shelly devices
+  hosts: collector
+  gather_facts: false
+  tasks:
+    - name: Check the network argument
+      ansible.builtin.assert:
+        that: net is defined and net | length > 0
+        fail_msg: "Pass the network, e.g. -e net=192.168.178.0/24 (make discover NET=...)"
+        quiet: true
+
+    - name: Scan the network with collector.py
+      ansible.builtin.script:
+        cmd: "{{ playbook_dir }}/../collector/collector.py discover {{ net | quote }}"
+        executable: python3
+      register: discover_out
+      changed_when: false
+
+    # single quotes: the output is shown as JSON, where double quotes would get backslashes
+    - name: Devices found (paste into inventory.yml)
+      ansible.builtin.debug:
+        msg: >-
+          {{ ['collector_devices:']
+             + discover_out.stdout_lines
+               | select('match', '^"')
+               | map('regex_replace', "'", "''")
+               | map('regex_replace', '^"([^"]*)" = "([^"]*)"\s*(#.*)?$', "  '\1': \2  \3")
+               | list }}

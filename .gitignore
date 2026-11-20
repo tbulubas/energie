@@ -25,6 +25,7 @@ docs/history.md
 # collector: device IPs and its database
 collector/collector.toml
 collector/*.db
+deploy/inventory.yml
 
 # old prototype and exported reports
 /app/

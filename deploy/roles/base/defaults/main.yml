@@ -1,0 +1,7 @@
+# Copyright (c) 2026 Taras Bulubas. All rights reserved.
+# Use requires prior written permission; see LICENSE.
+
+# The PC's time zone, e.g. Europe/Berlin (required): the collector stores local time.
+energie_timezone: ""
+# Upgrade every package on each run (apt dist-upgrade).
+base_upgrade: true

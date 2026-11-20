@@ -7,7 +7,7 @@ utility accounts, no cloud APIs, no data to third parties. Treat that as non-neg
 
 - **Never commit or copy into tests:** `energie.db`, meter photos (`hodiny/`, `photos/`), Shelly
   screenshots (`screenshots/`), `data/` (hand-checked readings, eval results) or
-  `collector/collector.toml` (device IPs). Meter photos show the meter number and the network
+  `collector/collector.toml` or `deploy/inventory.yml` (device IPs). Meter photos show the meter number and the network
   operator's id; readings show when somebody is at home.
 - Work on the code, not the data. Opening the user's photos or screenshots is fine only when the user
   asks for it in the conversation (e.g. to check a misread value); never add their values to tests,
@@ -55,6 +55,7 @@ every source file.
 | `tests/` | pytest; `conftest.py` gives every test a temp DB and folders and disables Ollama |
 | `scripts/check_venv.py` | guards the Python version of `.venv` (shared with the other projects) |
 | `scripts/readme_screenshots.py` | `make screenshots`: README images in `docs/images` from the demo |
+| `deploy/` | Ansible for the Pi: `make deploy` (roles `base`, `collector`, `backup`), `make discover`; runs in WSL on Windows; the clean Pi first: `docs/raspberry-pi.md` |
 
 ## Conventions
 

@@ -1,0 +1,15 @@
+# Copyright (c) 2026 Taras Bulubas. All rights reserved.
+# Use requires prior written permission; see LICENSE.
+
+collector_dir: /opt/energie-collector
+# On a Pi better on a USB stick/SSD than on the SD card; the folder is created.
+collector_db: "{{ collector_dir }}/collector.db"
+collector_interval_s: 60
+collector_port: 8600
+# "Name as in the Shelly app": "IP address"
+collector_devices: {}
+# Gas meter pulses on a GPIO pin (Raspberry Pi): reed contact between the pin and GND.
+collector_gas_enabled: false
+collector_gas_pin: 17
+collector_gas_m3_per_pulse: 0.1
+collector_gas_debounce_s: 0.1

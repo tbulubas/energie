@@ -3,6 +3,7 @@
 *.sh        text eol=lf
 *.service   text eol=lf
 collector/** text eol=lf
+deploy/**    text eol=lf
 
 # Windows launcher
 *.bat       text eol=crlf

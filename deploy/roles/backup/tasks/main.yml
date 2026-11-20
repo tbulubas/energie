@@ -1,0 +1,42 @@
+# Copyright (c) 2026 Taras Bulubas. All rights reserved.
+# Use requires prior written permission; see LICENSE.
+
+- name: Create the backup folder
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    owner: energie
+    group: energie
+    mode: "0750"
+
+- name: Install the backup script
+  ansible.builtin.template:
+    src: energie-collector-backup.sh.j2
+    dest: /usr/local/bin/energie-collector-backup
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Run the backup every night
+  ansible.builtin.cron:
+    name: energie collector backup
+    cron_file: energie-collector-backup
+    user: energie
+    hour: "{{ backup_hour }}"
+    minute: "{{ backup_minute }}"
+    job: /usr/local/bin/energie-collector-backup
+
+- name: Create an SSH key for the copy to the NAS
+  ansible.builtin.user:
+    name: energie
+    generate_ssh_key: true
+    ssh_key_type: ed25519
+    ssh_key_file: .ssh/id_ed25519
+    ssh_key_comment: energie-collector@{{ inventory_hostname }}
+  register: backup_key
+  when: backup_rsync_target | length > 0
+
+- name: Key to authorize on the NAS
+  ansible.builtin.debug:
+    msg: "Add to ~/.ssh/authorized_keys on {{ backup_rsync_target.split(':')[0] }}: {{ backup_key.ssh_public_key }}"
+  when: backup_rsync_target | length > 0 and backup_key.ssh_public_key is defined

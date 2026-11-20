@@ -1,0 +1,103 @@
+# Copyright (c) 2026 Taras Bulubas. All rights reserved.
+# Use requires prior written permission; see LICENSE.
+
+# The same result as collector/install.sh, with collector.toml generated from the inventory.
+
+- name: Install the GPIO libraries for the gas meter
+  ansible.builtin.apt:
+    name: [python3-gpiozero, python3-lgpio]
+    state: present
+  when: collector_gas_enabled | bool
+
+- name: Look up the gpio group (missing on an Odroid)
+  ansible.builtin.getent:
+    database: group
+    key: gpio
+    fail_key: false
+
+- name: Remember whether the system has GPIO
+  ansible.builtin.set_fact:
+    collector_has_gpio: "{{ (ansible_facts.getent_group | default({})).get('gpio') is not none }}"
+
+- name: Check that the gas meter has a GPIO pin
+  ansible.builtin.assert:
+    that: collector_has_gpio | bool or not collector_gas_enabled | bool
+    fail_msg: This system has no GPIO; set collector_gas_enabled to false.
+    quiet: true
+
+- name: Create the service user
+  ansible.builtin.user:
+    name: energie
+    system: true
+    home: "{{ collector_dir }}"
+    create_home: false
+    shell: /usr/sbin/nologin
+    groups: "{{ ['gpio'] if collector_has_gpio | bool else [] }}"
+    append: true
+
+- name: Create the folders
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: energie
+    group: energie
+    mode: "0755"
+  loop: "{{ [collector_dir, collector_db | dirname] | unique }}"
+
+- name: Copy the collector
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../collector/collector.py"
+    dest: "{{ collector_dir }}/collector.py"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the collector
+
+- name: Write collector.toml from the inventory
+  ansible.builtin.template:
+    src: collector.toml.j2
+    dest: "{{ collector_dir }}/collector.toml"
+    owner: root
+    group: energie
+    mode: "0640"
+  notify: Restart the collector
+
+- name: Install the systemd unit
+  ansible.builtin.template:
+    src: energie-collector.service.j2
+    dest: /etc/systemd/system/energie-collector.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the collector
+
+- name: Start the collector now and at boot
+  ansible.builtin.systemd:
+    name: energie-collector
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply the changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the collector's API
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ collector_port }}/api/health"
+  register: collector_health
+  until: collector_health.status == 200
+  retries: 10
+  delay: 3
+  check_mode: false
+
+- name: Collector state (the first values come after one interval)
+  ansible.builtin.debug:
+    msg: "{{ collector_summary }}"
+  vars:
+    collector_summary: >-
+      {{ ['API: http://' ~ (ansible_host | default(inventory_hostname)) ~ ':' ~ collector_port
+          ~ ' (enter it in the app: Settings)']
+         + (collector_health.json.devices | map(attribute='name') | map('regex_replace', '^', 'device: ') | list)
+         + (['gas meter: GPIO' ~ collector_gas_pin ~ ', calibrate it once (deploy/README.md)']
+            if collector_gas_enabled | bool else []) }}
+  when: collector_health.json is defined

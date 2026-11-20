@@ -1,0 +1,44 @@
+# Copyright (c) 2026 Taras Bulubas. All rights reserved.
+# Use requires prior written permission; see LICENSE.
+
+- name: Check the settings and the system
+  ansible.builtin.assert:
+    that:
+      - energie_timezone | length > 0
+      - ansible_facts.python.version.major == 3 and ansible_facts.python.version.minor >= 11
+    fail_msg: >-
+      Set energie_timezone in inventory.yml to the PC's time zone (e.g. Europe/Berlin), and use a
+      system with Python 3.11+ (Raspberry Pi OS Bookworm or newer): the collector needs tomllib.
+    quiet: true
+
+- name: Update the package lists and upgrade the system
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    upgrade: "{{ 'dist' if base_upgrade | bool else 'no' }}"
+
+- name: Install the base packages
+  ansible.builtin.apt:
+    name: [python3, sqlite3, rsync, unattended-upgrades]
+    state: present
+
+- name: Install security updates every day
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Read the time zone
+  ansible.builtin.command: timedatectl show --property=Timezone --value
+  register: base_timezone
+  changed_when: false
+  check_mode: false
+
+- name: Set the time zone
+  ansible.builtin.command: timedatectl set-timezone {{ energie_timezone | quote }}
+  when: base_timezone.stdout != energie_timezone
+  changed_when: true

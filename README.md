@@ -239,10 +239,11 @@ src/energie/
   static/i18n/        UI strings in English, German and Slovak (en.json, de.json, sk.json)
   static/vendor/      Chart.js 4.4.4 with its MIT licence (no CDN)
 collector/            the collector for the Raspberry Pi / NAS (standard library only)
+deploy/               Ansible: a clean Raspberry Pi OS to a running collector (make deploy)
 tests/                tests with invented data
 scripts/              check_venv.py guards the Python version; readme_screenshots.py
                       takes the README screenshots from the demo
-docs/                 IntelliJ setup; images/ holds the README screenshots (demo data)
+docs/                 IntelliJ setup, Raspberry Pi 4 setup; images/ holds the README screenshots (demo data)
 .run/                 shared IntelliJ run configurations
 Makefile              environment and task shortcuts
 start.bat             double-click launcher

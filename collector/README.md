@@ -22,6 +22,9 @@ Odroid does the same job — the code is the same.
 
 ## Install (Raspberry Pi OS Bookworm / Armbian, Python 3.11+)
 
+Automated from the PC with Ansible — system updates, time zone, the service and the backup in one
+step, repeatable: see [deploy/README.md](../deploy/README.md) (`make deploy`). By hand:
+
 ```sh
 scp -r collector pi@energy-pi:~/
 ssh pi@energy-pi

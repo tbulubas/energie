@@ -1,0 +1,8 @@
+# Copyright (c) 2026 Taras Bulubas. All rights reserved.
+# Use requires prior written permission; see LICENSE.
+
+- name: Restart the collector
+  ansible.builtin.systemd:
+    name: energie-collector
+    state: restarted
+    daemon_reload: true

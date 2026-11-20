@@ -1,0 +1,12 @@
+#!/bin/sh
+# Copyright (c) 2026 Taras Bulubas. All rights reserved.
+# Use requires prior written permission; see LICENSE.
+
+# Nightly copy of the collector database, one file per weekday. Managed by Ansible (deploy/).
+set -eu
+dest="{{ backup_dir }}/collector-$(LC_ALL=C date +%a).db"
+sqlite3 {{ collector_db | quote }} ".backup '$dest.tmp'"
+mv "$dest.tmp" "$dest"
+{% if backup_rsync_target %}
+rsync -a -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new" {{ (backup_dir ~ '/') | quote }} {{ backup_rsync_target | quote }}
+{% endif %}

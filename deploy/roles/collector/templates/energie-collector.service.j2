@@ -1,0 +1,7 @@
+{#- Copyright (c) 2026 Taras Bulubas. All rights reserved.
+    Use requires prior written permission; see LICENSE.
+
+    collector/energie-collector.service is the one source for install.sh and Ansible. Without GPIO
+    (Odroid) the gpio group does not exist and systemd would refuse SupplementaryGroups=gpio. -#}
+{% set unit = lookup('ansible.builtin.file', playbook_dir ~ '/../collector/energie-collector.service') %}
+{{ unit if collector_has_gpio | bool else unit | regex_replace('(?m)^SupplementaryGroups=gpio\n', '') }}
