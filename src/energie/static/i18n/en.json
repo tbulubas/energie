@@ -125,6 +125,7 @@
   "s_photos_dir": "Folder with meter photos",
   "s_screenshots_dir": "Folder with Shelly screenshots",
   "s_collector_url": "Collector address (http://…:8600)",
+  "s_sync_minutes": "Sync with the collector every … minutes",
   "settings_saved": "Saved.",
   "gemma_off": "Ollama is not running",
   "coll_none": "no collector data yet",

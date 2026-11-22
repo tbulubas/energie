@@ -90,6 +90,7 @@ DEFAULT_SETTINGS = {
     "photos_dir": "",
     "screenshots_dir": "",
     "collector_url": "",
+    "sync_minutes": "5",                   # how often the app pulls new data from the collector
 }
 
 

@@ -125,6 +125,7 @@
   "s_photos_dir": "Priečinok s fotkami meračov",
   "s_screenshots_dir": "Priečinok so Shelly screenshotmi",
   "s_collector_url": "Adresa zberača (http://…:8600)",
+  "s_sync_minutes": "Synchronizovať so zberačom každých … minút",
   "settings_saved": "Uložené.",
   "gemma_off": "Ollama nebeží",
   "coll_none": "zatiaľ žiadne dáta zo zberača",

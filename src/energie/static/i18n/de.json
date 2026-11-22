@@ -125,6 +125,7 @@
   "s_photos_dir": "Ordner mit Zählerfotos",
   "s_screenshots_dir": "Ordner mit Shelly-Screenshots",
   "s_collector_url": "Adresse des Sammlers (http://…:8600)",
+  "s_sync_minutes": "Mit dem Sammler abgleichen alle … Minuten",
   "settings_saved": "Gespeichert.",
   "gemma_off": "Ollama läuft nicht",
   "coll_none": "noch keine Daten vom Sammler",

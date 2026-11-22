@@ -485,7 +485,7 @@ async function doSync() {
 // ---------- settings ----------
 const SETTINGS = [['sec_prices', ['electricity_eur_kwh','gas_eur_kwh','gas_correction_factor','gas_calorific_value']],
                   ['sec_checks', ['max_daily_electricity','max_daily_gas','auto_accept']],
-                  ['sec_folders', ['photos_dir','screenshots_dir','collector_url']]];
+                  ['sec_folders', ['photos_dir','screenshots_dir','collector_url','sync_minutes']]];
 async function loadSettings() {
   const s = await api('/api/settings');
   $('#setForm').innerHTML = SETTINGS.map(([sec, keys]) => `<h3>${t(sec)}</h3>` + keys.map(k => k === 'auto_accept'
@@ -514,6 +514,19 @@ function load(tab) {
   ({overview:loadOverview, devices:loadDevices, readings:loadReadings, review:loadReview,
     import:loadImport, collector:loadCollector, settings:loadSettings})[tab]().catch(e => console.error(e));
 }
+
+// The server syncs with the collector in the background; when new data has arrived, the tabs that
+// show it redraw by themselves (not the tabs with forms, which would lose what is being typed).
+let lastCollector;
+setInterval(async () => {
+  if (document.hidden) return;
+  try {
+    const s = await refreshStatus();
+    if (lastCollector !== undefined && s.collector_last !== lastCollector
+        && ['overview', 'devices', 'collector'].includes(currentTab)) load(currentTab);
+    lastCollector = s.collector_last;
+  } catch {}
+}, 60000);
 $('#langSel').onchange = async () => {
   await setLang($('#langSel').value);
   try { localStorage.setItem('lang', lang); } catch {}

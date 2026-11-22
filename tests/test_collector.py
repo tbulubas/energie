@@ -102,3 +102,28 @@ def test_app_syncs_incrementally(collector, con):
     assert gas == [("2026-05-01 07:00", 1000.0, "pulse"), ("2026-05-01 09:00", 1000.1, "pulse")]
     assert db.get_setting(con, "sync_since") == "2026-05-01 10:02:00"
     srv.shutdown()
+
+
+def test_app_syncs_in_a_loop_until_stopped(con, monkeypatch):
+    from energie import app as app_module
+    db.set_setting(con, "collector_url", "http://127.0.0.1:9")
+    db.set_setting(con, "sync_minutes", "7")
+    stop, calls, waits = threading.Event(), [], []
+
+    def fake_sync(_con, url):
+        calls.append(url)
+        if len(calls) == 2:                      # the second round raises: the loop goes on
+            raise OSError("collector off")
+        return {"samples": 0, "gas": 0, "since": ""}
+
+    def fake_wait(seconds):
+        waits.append(seconds)
+        if len(waits) == 3:
+            stop.set()
+        return stop.is_set()
+
+    monkeypatch.setattr(sync, "sync", fake_sync)
+    monkeypatch.setattr(stop, "wait", fake_wait)
+    app_module._sync_loop(stop)
+    assert calls == ["http://127.0.0.1:9"] * 3
+    assert waits == [7 * 60] * 3

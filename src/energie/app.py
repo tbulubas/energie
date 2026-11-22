@@ -20,24 +20,50 @@ JOB = {"running": False, "done": 0, "total": 0, "log": []}
 JOB_LOCK = threading.Lock()
 
 
-def _sync_in_background():
+# The loop and the Sync button never sync at the same time.
+SYNC_LOCK = threading.Lock()
+
+
+def _sync_minutes() -> float:
     con = db.get_db()
     try:
-        url = db.get_setting(con, "collector_url")
-        if url:
-            print("[sync]", sync.sync(con, url))
-    except Exception as e:  # noqa: BLE001 - the collector may be off
-        print("[sync] collector not reachable:", e)
+        return max(1.0, float(db.get_setting(con, "sync_minutes") or 5))
+    except ValueError:
+        return 5.0
     finally:
         con.close()
+
+
+def _sync_loop(stop: threading.Event) -> None:
+    """Sync at startup, then every `sync_minutes`. The collector keeps its data while the PC is off,
+    so a pause loses nothing: the next round fetches everything since the last one."""
+    while not stop.is_set():
+        try:
+            with SYNC_LOCK:
+                con = db.get_db()
+                try:
+                    url = db.get_setting(con, "collector_url")
+                    if url:
+                        print("[sync]", sync.sync(con, url))
+                finally:
+                    con.close()
+        except Exception as e:  # noqa: BLE001 - the collector may be off
+            print("[sync] collector not reachable:", e)
+        try:
+            wait = _sync_minutes() * 60
+        except Exception:  # noqa: BLE001
+            wait = 300.0
+        stop.wait(wait)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # created on startup, not on import, so tests can point db.DB_PATH elsewhere first
     db.init_db()
-    threading.Thread(target=_sync_in_background, daemon=True).start()
+    stop = threading.Event()
+    threading.Thread(target=_sync_loop, args=(stop,), daemon=True, name="sync").start()
     yield
+    stop.set()
 
 
 app = FastAPI(title="Energie", lifespan=lifespan)
@@ -316,6 +342,11 @@ def collector():
 
 @app.post("/api/sync")
 def do_sync():
+    with SYNC_LOCK:
+        return _sync_now()
+
+
+def _sync_now():
     con = db.get_db()
     try:
         url = db.get_setting(con, "collector_url")
