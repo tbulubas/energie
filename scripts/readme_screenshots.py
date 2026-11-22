@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "docs" / "images"
 WIDTH = 1200
 # file name -> (tab, height in px)
-SHOTS = {"overview": ("overview", 1440), "devices": ("devices", 1330), "review": ("review", 340)}
+SHOTS = {"overview": ("overview", 1440), "devices": ("devices", 1740), "review": ("review", 340)}
 
 # Chrome first: Edge leaves files in its temporary profile that Windows lets go of only later
 CANDIDATES = [

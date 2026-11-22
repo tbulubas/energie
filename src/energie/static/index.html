@@ -29,6 +29,7 @@
   .row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
   @media (max-width:800px){ .row { grid-template-columns:1fr; } }
   .chartbox { position:relative; height:280px; }
+  .subhead { font-size:15px; margin:22px 0 4px; }
   table { width:100%; border-collapse:collapse; font-size:14px; }
   th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
   th { color:var(--muted); font-weight:500; }
@@ -101,10 +102,14 @@
   <div class="card"><h2 data-i18n="dev_year_title"></h2><p class="hint" data-i18n="dev_year_hint"></p>
     <div class="chartbox" style="height:320px"><canvas id="devChart"></canvas></div></div>
   <div class="card"><h2 data-i18n="hourly_title"></h2>
-    <div class="toolbar" style="margin:8px 0"><select id="hourDev"></select>
-      <select id="hourDays"><option value="2"></option><option value="7" selected></option><option value="30"></option></select></div>
-    <div class="chartbox"><canvas id="hourChart"></canvas></div>
-    <p class="hint" id="hourHint" style="margin-top:8px"></p></div>
+    <div class="toolbar" style="margin:8px 0">
+      <select id="hourDays"><option value="2"></option><option value="7" selected></option><option value="30"></option></select>
+      <button class="btn" id="hourAll" data-i18n="show_all"></button>
+      <button class="btn" id="hourNone" data-i18n="hide_all"></button></div>
+    <p class="hint" id="hourHint"></p>
+    <div class="chartbox" style="height:340px"><canvas id="hourChart"></canvas></div>
+    <h3 class="subhead" data-i18n="daily_title"></h3><p class="hint" data-i18n="daily_hint"></p>
+    <div class="chartbox"><canvas id="dayChart"></canvas></div></div>
   <div class="card"><h2 data-i18n="table_title"></h2><table id="devTable"></table></div>
 </section>
 
@@ -177,7 +182,8 @@ function initialLang() {
   return 'en';
 }
 async function fetchMessages(l) {
-  const r = await fetch(`/static/i18n/${l}.json`);
+  // no-cache: revalidate (ETag) every time, so new strings show after an update without Ctrl+F5
+  const r = await fetch(`/static/i18n/${l}.json`, {cache: 'no-cache'});
   if (!r.ok) throw new Error(`/static/i18n/${l}.json: ${r.status}`);
   return r.json();
 }
@@ -291,21 +297,84 @@ async function loadDevices() {
     DEV.stats.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.floor)}</td><td class=num>${nf(r.mean,2)}</td>
     <td class=num>${nf(r.avg_w,0)}</td><td class=num>${base[r.name]!=null?nf(base[r.name],0):'–'}</td>
     <td class=num>${nf(r.kwh_year,0)}</td><td class=num>${nf(r.eur_year,0)}</td><td class=num>${r.count}</td></tr>`).join('');
-  const names = [...new Set(DEV.hourly.map(h=>h.name))].sort();
-  if (!names.length) { $('#hourHint').textContent = t('hourly_empty'); $('#hourDev').innerHTML=''; if (charts.hourChart) charts.hourChart.destroy(); return; }
-  const cur = $('#hourDev').value;
-  $('#hourDev').innerHTML = names.map(n=>`<option ${n===cur?'selected':''}>${esc(n)}</option>`).join('');
   drawHourly();
 }
-function drawHourly() {
-  const n = $('#hourDev').value, h = DEV.hourly.filter(x=>x.name===n);
-  $('#hourHint').textContent = t('hourly_info', {hours: h.length, kwh: nf(h.reduce((a,x)=>a+x.kwh,0),2)});
-  const lbl = s => { const d = new Date(s); return d.toLocaleDateString(LOCALE[lang], {day:'numeric', month:'numeric'}) + ' ' + d.getHours() + 'h'; };
-  chart('hourChart', {type:'bar', data:{labels:h.map(x=>lbl(x.hour)),
-    datasets:[{data:h.map(x=>x.kwh*1000), backgroundColor:C.accent, borderRadius:2}]},
-    options:barOpts('Wh', {scales:{x:{grid:{display:false}, ticks:{maxTicksLimit:12}}, y:{beginAtZero:true, title:{display:true,text:'Wh'}}}})});
+
+// Devices in one hourly chart (a line each plus their total) and a daily stacked summary.
+// The hidden ones are remembered in this browser only.
+const HOUR_HIDDEN_KEY = 'hourHidden';
+let hourHidden = new Set();
+try { hourHidden = new Set(JSON.parse(localStorage.getItem(HOUR_HIDDEN_KEY) || '[]')); } catch {}
+function saveHourHidden() { try { localStorage.setItem(HOUR_HIDDEN_KEY, JSON.stringify([...hourHidden])); } catch {} }
+const hourNames = () => [...new Set(DEV.hourly.map(h=>h.name))].sort((a,b)=>a.localeCompare(b, LOCALE[lang]));
+
+// Eight categorical hues in a fixed order, checked for colour-vision deficiencies on the card colour.
+// A device keeps its colour when others are hidden (colour follows the device, not its rank);
+// devices 9-16 reuse the hues with a second cue: dotted line, hatched bar. Dashed is the total.
+const SERIES = ['#3987e5','#d95926','#199e70','#c98500','#d55181','#0ca30c','#9085e9','#e66767'];
+const SURFACE = '#1a2233';
+const devColor = i => SERIES[i % SERIES.length];
+const devSecond = i => i >= SERIES.length;
+function hatch(color) {
+  const c = document.createElement('canvas'); c.width = c.height = 8;
+  const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 8, 8);
+  g.strokeStyle = SURFACE; g.lineWidth = 2; g.beginPath();
+  g.moveTo(-2, 2); g.lineTo(2, -2); g.moveTo(0, 8); g.lineTo(8, 0); g.moveTo(6, 10); g.lineTo(10, 6); g.stroke();
+  return g.createPattern(c, 'repeat');
 }
-$('#hourDev').onchange = drawHourly; $('#hourDays').onchange = loadDevices;
+// a click on a device in the legend hides or shows it in both charts; the total cannot be hidden
+function toggleDevice(_e, item, legend) {
+  const ds = legend.chart.data.datasets[item.datasetIndex];
+  if (ds.isTotal) return;
+  hourHidden.has(ds.label) ? hourHidden.delete(ds.label) : hourHidden.add(ds.label);
+  saveHourHidden(); drawHourly();
+}
+
+function drawHourly() {
+  const names = hourNames();
+  if (!names.length) {
+    $('#hourHint').textContent = t('hourly_empty');
+    ['hourChart', 'dayChart'].forEach(k => { if (charts[k]) { charts[k].destroy(); delete charts[k]; } }); return;
+  }
+  const all = names.map((n,i)=>({n, i, hidden: hourHidden.has(n)})), shown = all.filter(d=>!d.hidden);
+  $('#hourHint').textContent = shown.length ? t('hourly_shown', {shown: shown.length, all: names.length}) : t('hourly_none');
+
+  // hourly: one line per device (Wh in that hour) and the total of the devices shown
+  const hours = [...new Set(DEV.hourly.map(x=>x.hour))].sort(), at = new Map(hours.map((h,k)=>[h,k]));
+  const wh = {}; names.forEach(n => wh[n] = hours.map(() => null));
+  DEV.hourly.forEach(x => { wh[x.name][at.get(x.hour)] = x.kwh * 1000; });
+  const total = hours.map((_,k) => { const v = shown.map(d=>wh[d.n][k]).filter(v=>v!=null); return v.length ? v.reduce((a,b)=>a+b,0) : null; });
+  const lbl = s => { const d = new Date(s); return d.toLocaleDateString(LOCALE[lang], {day:'numeric', month:'numeric'}) + ' ' + d.getHours() + 'h'; };
+  const sortDesc = (a, b) => (b.parsed.y ?? 0) - (a.parsed.y ?? 0);
+  const isolated = c => { const d = c.dataset.data, k = c.dataIndex;
+    return d[k] != null && d[k-1] == null && d[k+1] == null ? 4 : 0; };
+  chart('hourChart', {type:'line', data:{labels:hours.map(lbl), datasets:[
+      ...all.map(d=>({label:d.n, data:wh[d.n], hidden:d.hidden, borderColor:devColor(d.i), backgroundColor:devColor(d.i),
+        borderDash:devSecond(d.i)?[2,3]:[], borderWidth:2})),
+      {label:t('total'), data:total, borderColor:C.text, backgroundColor:C.text, borderDash:[6,4], borderWidth:2, isTotal:true}]},
+    options:{responsive:true, maintainAspectRatio:false, animation:false, interaction:{mode:'index', intersect:false},
+      // a point only where an hour stands alone (the first hour, or between gaps): a line needs two
+      elements:{point:{radius:isolated, hoverRadius:4, hitRadius:6}, line:{tension:0}},
+      plugins:{legend:{position:'top', onClick:toggleDevice, labels:{color:C.text, boxWidth:28, boxHeight:10}},
+        tooltip:{itemSort:sortDesc, filter:c => c.dataset.isTotal || (c.parsed.y ?? 0) >= 0.5,
+        callbacks:{label:c=>`${c.dataset.label}: ${nf(c.parsed.y,0)} Wh`}}},
+      scales:{x:{grid:{display:false}, ticks:{maxTicksLimit:12}}, y:{beginAtZero:true, title:{display:true,text:'Wh'}}}}});
+
+  // daily: kWh per day, one stacked segment per device
+  const days = [...new Set(hours.map(h=>h.slice(0,10)))];
+  const kwh = {}; names.forEach(n => kwh[n] = days.map(() => 0));
+  DEV.hourly.forEach(x => { kwh[x.name][days.indexOf(x.hour.slice(0,10))] += x.kwh; });
+  chart('dayChart', {type:'bar', data:{labels:days.map(dlabel), datasets:all.map(d=>({label:d.n, data:kwh[d.n], hidden:d.hidden,
+      backgroundColor:devSecond(d.i) ? hatch(devColor(d.i)) : devColor(d.i), borderColor:SURFACE, borderWidth:1, borderSkipped:false}))},
+    options:{responsive:true, maintainAspectRatio:false, animation:false, interaction:{mode:'index', intersect:false},
+      plugins:{legend:{position:'top', onClick:toggleDevice, labels:{color:C.text, boxWidth:28, boxHeight:10}}, tooltip:{itemSort:sortDesc, filter:c => (c.parsed.y ?? 0) >= 0.005,
+        callbacks:{label:c=>`${c.dataset.label}: ${nf(c.parsed.y,2)} kWh`,
+          footer:items=>`${t('total')}: ${nf(items.reduce((a,c)=>a+(c.parsed.y??0),0),2)} kWh`}}},
+      scales:{x:{stacked:true, grid:{display:false}}, y:{stacked:true, beginAtZero:true, title:{display:true,text:'kWh'}}}}});
+}
+$('#hourDays').onchange = loadDevices;
+$('#hourAll').onclick = () => { hourHidden.clear(); saveHourHidden(); drawHourly(); };
+$('#hourNone').onclick = () => { hourNames().forEach(n=>hourHidden.add(n)); saveHourHidden(); drawHourly(); };
 
 // ---------- readings ----------
 const meterName = m => t('m_'+m);

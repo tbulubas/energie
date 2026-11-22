@@ -52,7 +52,7 @@ tab next to its photo, where you correct it with one click.
 
 | Devices |  |
 |---|---|
-| ![Yearly estimate per plug, hourly profile from the collector and the device table](docs/images/devices.png) | Every plug with its daily average, its night base load and what it costs a year. With the collector running, the hourly profile shows when a device actually runs. |
+| ![Yearly estimate per plug, hourly profile from the collector and the device table](docs/images/devices.png) | Every plug with its daily average, its night base load and what it costs a year. With the collector running, the hourly profile shows when each device actually runs, all plugs in one chart with their total, and a stacked chart per day; hide the plugs you do not need. |
 
 ## Try it with invented data
 
