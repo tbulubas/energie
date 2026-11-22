@@ -80,6 +80,19 @@ ssh -t pi@192.168.178.50 sudo -u energie python3 /opt/energie-collector/collecto
   `/opt/energie-collector/backup/`. With `backup_rsync_target` set, it also copies them to the NAS over
   SSH; the playbook prints the key of the user `energie` to add to `~/.ssh/authorized_keys` there.
 
+### NAS with openmediavault
+
+1. *Shared Folders → Add*: e.g. `energie`, permissions *Users: read/write, Others: no access*.
+2. *User → Add*: e.g. `energie-backup`, shell `/bin/sh`, groups `users` and **`ssh`** (OMV lets only
+   that group log in over SSH); the comment must not contain `:` or `,`. *Privileges*: read/write on
+   `energie` only.
+3. The folder's path: `/srv/dev-disk-by-uuid-…/energie/` (the device of the shared folder). In the
+   inventory: `backup_rsync_target: energie-backup@<NAS>:/srv/dev-disk-by-uuid-…/energie/collector/`;
+   rsync creates `collector/`.
+4. `make deploy`, then *User → Edit → Public keys → Add* with the printed key. openmediavault 5 takes
+   an ed25519 key only in RFC 4716 format: `ssh-keygen -e -f key.pub` converts the printed line.
+5. Test: `ssh -t pi@<Pi> sudo -u energie /usr/local/bin/energie-collector-backup`.
+
 ## Updating
 
 After a change to `collector/collector.py` or the inventory: `make deploy`. The service restarts only

@@ -8,5 +8,7 @@ dest="{{ backup_dir }}/collector-$(LC_ALL=C date +%a).db"
 sqlite3 {{ collector_db | quote }} ".backup '$dest.tmp'"
 mv "$dest.tmp" "$dest"
 {% if backup_rsync_target %}
-rsync -a -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new" {{ (backup_dir ~ '/') | quote }} {{ backup_rsync_target | quote }}
+# --omit-dir-times: the target folder may belong to another user (e.g. a NAS share owned by root),
+# who alone may set its time; the files themselves keep theirs
+rsync -a --omit-dir-times -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new" {{ (backup_dir ~ '/') | quote }} {{ backup_rsync_target | quote }}
 {% endif %}

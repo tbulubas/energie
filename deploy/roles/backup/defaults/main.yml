@@ -5,6 +5,7 @@
 backup_dir: "{{ collector_dir }}/backup"
 backup_hour: "3"
 backup_minute: "15"
-# Optional copy to the NAS with rsync over SSH, e.g. backup@odroid.local:/srv/backup/energie/
+# Optional copy to the NAS with rsync over SSH, e.g. backup@odroid.local:/srv/backup/energie/collector/
+# (rsync creates the last folder, owned by that user)
 # The playbook creates an SSH key for the user energie and prints it: add it to authorized_keys there.
 backup_rsync_target: ""

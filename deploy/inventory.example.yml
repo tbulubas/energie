@@ -32,4 +32,4 @@ all:
           # collector_db: /mnt/usb/energie/collector.db
 
           # Nightly copy to the NAS over SSH (the playbook prints the key to authorize there):
-          # backup_rsync_target: backup@odroid.local:/srv/backup/energie/
+          # backup_rsync_target: backup@192.168.178.60:/srv/dev-disk-by-uuid-…/energie/collector/
