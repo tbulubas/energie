@@ -212,7 +212,8 @@ def discover(cidr: str) -> None:
 
     def probe(ip):
         try:
-            info = http_json(f"http://{ip}/shelly", timeout=0.8)
+            # 2 s: a plug on Wi-Fi power save can take over a second to answer the first request
+            info = http_json(f"http://{ip}/shelly", timeout=2)
         except Exception:  # noqa: BLE001
             return None
         gen = int(info.get("gen", 1))
