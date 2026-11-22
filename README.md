@@ -54,6 +54,13 @@ tab next to its photo, where you correct it with one click.
 |---|---|
 | ![Yearly estimate per plug, hourly profile from the collector and the device table](docs/images/devices.png) | Every plug with its daily average, its night base load and what it costs a year. With the collector running, the hourly profile shows when each device actually runs, all plugs in one chart with their total, and a stacked chart per day; hide the plugs you do not need. |
 
+## How it fits together
+
+![Architecture: Shelly plugs, the collector on a Raspberry Pi, the app on the PC](docs/diagrams/architecture.svg)
+
+The parts, the path of the data from a plug to a chart, where everything is stored and how the Pi
+is deployed: [docs/architecture.md](docs/architecture.md).
+
 ## Try it with invented data
 
 ```bash
@@ -121,6 +128,7 @@ Running it again only reinstalls when `pyproject.toml` or the `Makefile` has cha
 | `make run`           | start the app at `http://localhost:8510`; another port with `ARGS="--port 8520"` |
 | `make demo`          | try the app on invented data at `http://localhost:8511` (your database is not used) |
 | `make screenshots`   | retake the README screenshots in `docs/images` from the demo (headless Edge or Chrome) |
+| `make diagrams`      | export `docs/diagrams/*.drawio` to SVG (draw.io desktop app) |
 | `make clean`         | remove caches and build metadata                           |
 | `make distclean`     | `clean` and remove `.venv`                                 |
 | `make recreate`      | `distclean`, then `venv` — a fresh environment             |
@@ -243,7 +251,8 @@ deploy/               Ansible: a clean Raspberry Pi OS to a running collector (m
 tests/                tests with invented data
 scripts/              check_venv.py guards the Python version; readme_screenshots.py
                       takes the README screenshots from the demo
-docs/                 IntelliJ setup, Raspberry Pi 4 setup; images/ holds the README screenshots (demo data)
+docs/                 architecture, IntelliJ setup, Raspberry Pi 4 setup; diagrams/ the draw.io sources
+                      and their SVGs; images/ holds the README screenshots (demo data)
 .run/                 shared IntelliJ run configurations
 Makefile              environment and task shortcuts
 start.bat             double-click launcher

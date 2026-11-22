@@ -12,6 +12,7 @@
 #   make demo      try the app on invented data at http://localhost:8511
 #   make screenshots  retake the README screenshots from the demo (Edge or Chrome)
 #   make deploy    set up the collector on the Raspberry Pi with Ansible (WSL on Windows)
+#   make diagrams  export docs/diagrams/*.drawio to SVG with the draw.io desktop app
 #
 # The project uses Python 3.12 (PYTHON_VERSION). The base interpreter is found
 # with the py launcher on Windows and as python3.12 elsewhere, independently of
@@ -32,12 +33,25 @@ else
     IN_DEPLOY := cd deploy && bash -lc
 endif
 
+# draw.io desktop app for make diagrams; override with DRAWIO="path/to/draw.io".
+ifeq ($(OS),Windows_NT)
+    DRAWIO_USER := $(subst \,/,$(LOCALAPPDATA))/Programs/draw.io/draw.io.exe
+    ifneq ($(wildcard $(DRAWIO_USER)),)
+        DRAWIO ?= $(DRAWIO_USER)
+    else
+        DRAWIO ?= C:/Program Files/draw.io/draw.io.exe
+    endif
+else
+    DRAWIO ?= drawio
+endif
+DIAGRAMS := $(wildcard docs/diagrams/*.drawio)
+
 VENV_CFG := .venv/pyvenv.cfg
 STAMP := .venv/.installed
 ARGS ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help venv test run demo screenshots deploy discover clean distclean recreate
+.PHONY: help venv test run demo screenshots deploy discover diagrams clean distclean recreate
 
 help:
 	@echo Targets:
@@ -48,6 +62,7 @@ help:
 	@echo   make screenshots  retake the README screenshots in docs/images from the demo
 	@echo   make deploy     set up the collector on the Raspberry Pi (Ansible; deploy/README.md)
 	@echo   make discover NET=192.168.178.0/24  list the Shelly devices for deploy/inventory.yml
+	@echo   make diagrams   export docs/diagrams/*.drawio to SVG (draw.io desktop, DRAWIO=...)
 	@echo   make clean      remove caches and build metadata
 	@echo   make distclean  clean and remove .venv
 	@echo   make recreate   distclean, then venv
@@ -92,6 +107,14 @@ deploy:
 discover:
 	$(INVENTORY_CHECK)
 	$(IN_DEPLOY) "ansible-playbook -i inventory.yml discover.yml -e net=$(NET)"
+
+# One SVG per diagram, rebuilt when its .drawio changes. Fonts are not embedded
+# (small files); the white page background comes from the diagram, so the
+# images read well in light and dark mode.
+diagrams: $(DIAGRAMS:.drawio=.svg)
+
+docs/diagrams/%.svg: docs/diagrams/%.drawio
+	"$(DRAWIO)" --export --format svg --embed-svg-fonts false --theme light --border 10 --output $@ $<
 
 clean:
 	$(PYTHON) -c "import glob, shutil; [shutil.rmtree(p, ignore_errors=True) for p in ['.pytest_cache', 'build', *glob.glob('src/*.egg-info'), *glob.glob('*/**/__pycache__', recursive=True)]]"

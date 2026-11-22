@@ -55,6 +55,7 @@ every source file.
 | `tests/` | pytest; `conftest.py` gives every test a temp DB and folders and disables Ollama |
 | `scripts/check_venv.py` | guards the Python version of `.venv` (shared with the other projects) |
 | `scripts/readme_screenshots.py` | `make screenshots`: README images in `docs/images` from the demo |
+| `docs/architecture.md` | parts, data flow, storage, deployment (PlantUML); picture from `docs/diagrams/architecture.drawio` (`make diagrams`) |
 | `deploy/` | Ansible for the Pi: `make deploy` (roles `base`, `collector`, `backup`), `make discover`; runs in WSL on Windows; the clean Pi first: `docs/raspberry-pi.md` |
 
 ## Conventions
