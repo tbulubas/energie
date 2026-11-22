@@ -1,0 +1,33 @@
+{#- Copyright (c) 2026 Taras Bulubas. All rights reserved.
+    Use requires prior written permission; see LICENSE. -#}
+# Managed by Ansible (deploy/roles/app): change the inventory and run make deploy, not this file.
+[Unit]
+Description=Energie web app
+After=network-online.target energie-collector.service
+Wants=network-online.target
+
+[Service]
+User=energie
+WorkingDirectory={{ app_data_dir }}
+Environment=ENERGIE_DB={{ app_db }}
+Environment=ENERGIE_PHOTOS={{ app_data_dir }}/photos
+Environment=ENERGIE_SCREENSHOTS={{ app_data_dir }}/screenshots
+Environment=ENERGIE_COLLECTOR_URL=http://127.0.0.1:{{ collector_port }}
+{% if app_ollama_url %}
+Environment=ENERGIE_OLLAMA_URL={{ app_ollama_url }}
+{% endif %}
+{% if app_gemma_model %}
+Environment=ENERGIE_GEMMA_MODEL={{ app_gemma_model }}
+{% endif %}
+ExecStart={{ app_dir }}/venv/bin/python -m energie --host {{ app_host }} --port {{ app_port }}
+Restart=on-failure
+RestartSec=10
+# The service writes only its data folder.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ app_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

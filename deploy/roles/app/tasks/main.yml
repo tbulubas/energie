@@ -1,0 +1,135 @@
+# Copyright (c) 2026 Taras Bulubas. All rights reserved.
+# Use requires prior written permission; see LICENSE.
+
+# The web app from this checkout (src/energie), installed into a virtual environment and run as the
+# user energie next to the collector. Gemma stays on a computer with a GPU (app_ollama_url).
+
+- name: Install venv support
+  ansible.builtin.apt:
+    name: python3-venv
+    state: present
+
+- name: Create the code folders
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ app_dir }}"
+    - "{{ app_dir }}/source"
+
+- name: Create the data folders
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: energie
+    group: energie
+    mode: "0750"
+  loop:
+    - "{{ app_data_dir }}"
+    - "{{ app_data_dir }}/photos"
+    - "{{ app_data_dir }}/screenshots"
+
+# find + copy instead of copying the folder: compiled caches (*.pyc) change on every local test run
+# and would reinstall the app each time
+- name: List the app's files in this checkout
+  ansible.builtin.find:
+    paths: "{{ app_src_root }}"
+    recurse: true
+    file_type: file
+    excludes: ["*.pyc"]
+  delegate_to: localhost
+  become: false
+  run_once: true
+  register: app_files
+
+- name: Create the package folders
+  ansible.builtin.file:
+    path: "{{ app_dir }}/source/src/energie/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ app_files.files | map(attribute='path') | map('dirname') | map('relpath', app_src_root) | unique | list }}"
+
+- name: Copy the app
+  ansible.builtin.copy:
+    src: "{{ item.path }}"
+    dest: "{{ app_dir }}/source/src/energie/{{ item.path | relpath(app_src_root) }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ app_files.files }}"
+  loop_control:
+    label: "{{ item.path | relpath(app_src_root) }}"
+  register: app_copy
+  notify: Restart the app
+
+- name: Copy the project files pip needs
+  ansible.builtin.copy:
+    src: "{{ playbook_dir | dirname }}/{{ item }}"
+    dest: "{{ app_dir }}/source/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [pyproject.toml, README.md, LICENSE]
+  register: app_project
+  notify: Restart the app
+
+# plain commands rather than the pip module, which needs setuptools for the system Python
+- name: Create the virtual environment
+  ansible.builtin.command: python3 -m venv {{ app_dir }}/venv
+  args:
+    creates: "{{ app_dir }}/venv/bin/python"
+  register: app_venv
+
+- name: Install the app with its dependencies (pandas etc.; the first time takes a few minutes)
+  ansible.builtin.command: "{{ app_dir }}/venv/bin/pip install --quiet {{ app_dir }}/source"
+  when: app_venv.changed or app_project.changed
+  changed_when: true
+  notify: Restart the app
+
+# the version number does not change with the code: reinstall the package itself explicitly
+- name: Reinstall the app's own code
+  ansible.builtin.command: "{{ app_dir }}/venv/bin/pip install --quiet --no-deps --force-reinstall {{ app_dir }}/source"
+  when: app_copy.changed or app_project.changed
+  changed_when: true
+  notify: Restart the app
+
+- name: Install the systemd unit
+  ansible.builtin.template:
+    src: energie-app.service.j2
+    dest: /etc/systemd/system/energie-app.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the app
+
+- name: Start the app now and at boot
+  ansible.builtin.systemd:
+    name: energie-app
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply the changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the app
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ app_port }}/api/status"
+  register: app_status
+  until: app_status.status == 200
+  retries: 20
+  delay: 3
+  check_mode: false
+
+- name: App state
+  ansible.builtin.debug:
+    msg:
+      - "App: http://{{ ansible_host | default(inventory_hostname) }}:{{ app_port }}"
+      - "Gemma: {{ 'reachable at ' ~ app_ollama_url if app_status.json.gemma else 'not reachable (' ~ (app_ollama_url or 'app_ollama_url not set') ~ '); numbers and charts work without it' }}"
+      - "Collector data up to: {{ app_status.json.collector_last or 'not synced yet' }}"
+  when: app_status.json is defined

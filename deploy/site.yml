@@ -2,16 +2,19 @@
 # Use requires prior written permission; see LICENSE.
 
 # Turns a clean Raspberry Pi OS Lite (or Armbian on the Odroid) into the Energie collector:
-# system updates, time zone, the collector as a systemd service and a nightly database backup.
-# Run it again after every change (it only changes what differs):
+# system updates, time zone, the collector as a systemd service and a nightly database backup;
+# with energie_app_enabled also the web app. Run it again after every change (it only changes what
+# differs):
 #
 #   make deploy                                   (Windows: runs ansible-playbook in WSL)
 #   ansible-playbook -i inventory.yml site.yml    (from this folder on Linux/macOS/WSL)
 
-- name: Energie collector
+- name: Energie on the Pi
   hosts: collector
   become: true
   roles:
     - base
     - collector
+    - role: app
+      when: energie_app_enabled | bool
     - backup

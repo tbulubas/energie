@@ -28,6 +28,11 @@ all:
           collector_gas_pin: 17
           collector_gas_m3_per_pulse: 0.1
 
+          # The web app on the Pi as well: http://<Pi>:8510 in the home network (it has no login;
+          # never forward the port). Gemma from a PC with Ollama, whose firewall allows only the Pi:
+          # energie_app_enabled: true
+          # app_ollama_url: http://192.168.178.40:11434
+
           # Database on a USB stick/SSD instead of the SD card (mount it first):
           # collector_db: /mnt/usb/energie/collector.db
 

@@ -1,7 +1,8 @@
 # Copyright (c) 2026 Taras Bulubas. All rights reserved.
 # Use requires prior written permission; see LICENSE.
 
-# One copy per weekday (seven days back) in this folder, every night at backup_hour:backup_minute.
+# One copy per weekday (seven days back) in this folder, every night at backup_hour:backup_minute:
+# collector-<day>.db, and energie-<day>.db when the app runs here too (energie_app_enabled).
 backup_dir: "{{ collector_dir }}/backup"
 backup_hour: "3"
 backup_minute: "15"

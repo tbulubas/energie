@@ -8,6 +8,7 @@ system around it:
 |---|---|
 | `base` | `apt` upgrade, daily security updates (`unattended-upgrades`), the PC's time zone, Python 3.11+ check |
 | `collector` | user `energie`, `/opt/energie-collector/collector.py`, `collector.toml` from the inventory, the systemd service, a check of `/api/health` |
+| `app` | optional (`energie_app_enabled`): the web app from this checkout in a venv, the systemd service `energie-app`, data in `/var/lib/energie` |
 | `backup` | nightly `sqlite3 .backup`, one file per weekday, optionally `rsync` to the NAS |
 
 Why Ansible and not Terraform: Terraform creates resources through an API (cloud servers); a Pi has
@@ -71,6 +72,24 @@ Wire the reed contact between GPIO17 and GND, set `collector_gas_enabled: true` 
 ```sh
 ssh -t pi@192.168.178.50 sudo -u energie python3 /opt/energie-collector/collector.py calibrate-gas 12345.678
 ```
+
+## The web app on the Pi
+
+With `energie_app_enabled: true` the Pi also runs the app: `make deploy` copies `src/energie` from this
+checkout, installs it into `/opt/energie-app/venv` (pandas and the rest come from PyPI; the first
+time takes a few minutes) and starts the service `energie-app` at `http://<Pi>:8510`. Its data —
+`energie.db`, uploaded photos and screenshots — lives in `/var/lib/energie`; the collector is found at
+`127.0.0.1:8600`. After a change to the app: `make deploy` again.
+
+- **No login.** Anyone in the home network can open it; never forward the port to the internet.
+  `app_host: 127.0.0.1` keeps it on the Pi.
+- **Gemma** stays on a computer with a GPU: `app_ollama_url: http://<PC>:11434`. On that PC Ollama
+  must listen on the network (`OLLAMA_HOST=0.0.0.0`), and its firewall should allow port 11434 from
+  the Pi only — Ollama has no login either. With the PC off the app runs on: numbers, charts and the
+  sync need no Gemma.
+- **Moving from the PC:** copy `energie.db` to `/var/lib/energie/` (owner `energie`) while both apps
+  are stopped, and empty the photo and screenshot folders in *Settings*: the Pi uses its own.
+- The nightly backup then also takes `energie-<day>.db`, and the NAS copy the photos and screenshots.
 
 ## Database and backup
 

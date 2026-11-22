@@ -2,13 +2,27 @@
 # Copyright (c) 2026 Taras Bulubas. All rights reserved.
 # Use requires prior written permission; see LICENSE.
 
-# Nightly copy of the collector database, one file per weekday. Managed by Ansible (deploy/).
+# Nightly copy of the databases, one file per weekday. Managed by Ansible (deploy/).
 set -eu
-dest="{{ backup_dir }}/collector-$(LC_ALL=C date +%a).db"
-sqlite3 {{ collector_db | quote }} ".backup '$dest.tmp'"
-mv "$dest.tmp" "$dest"
+day=$(LC_ALL=C date +%a)
+
+snapshot() {   # snapshot <database> <name>: a consistent copy even while the service writes
+    sqlite3 "$1" ".backup '{{ backup_dir }}/$2-$day.db.tmp'"
+    mv "{{ backup_dir }}/$2-$day.db.tmp" "{{ backup_dir }}/$2-$day.db"
+}
+
+snapshot {{ collector_db | quote }} collector
+{% if energie_app_enabled | default(false) | bool %}
+if [ -f {{ app_db | quote }} ]; then snapshot {{ app_db | quote }} energie; fi
+{% endif %}
 {% if backup_rsync_target %}
+
 # --omit-dir-times: the target folder may belong to another user (e.g. a NAS share owned by root),
 # who alone may set its time; the files themselves keep theirs
-rsync -a --omit-dir-times -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new" {{ (backup_dir ~ '/') | quote }} {{ backup_rsync_target | quote }}
+ssh_opts="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+rsync -a --omit-dir-times -e "$ssh_opts" {{ (backup_dir ~ '/') | quote }} {{ backup_rsync_target | quote }}
+{% if energie_app_enabled | default(false) | bool %}
+# the original photos and screenshots: added, never deleted on the NAS
+rsync -a --omit-dir-times -e "$ssh_opts" {{ (app_data_dir ~ '/photos') | quote }} {{ (app_data_dir ~ '/screenshots') | quote }} {{ backup_rsync_target | quote }}
+{% endif %}
 {% endif %}

@@ -144,6 +144,7 @@ the digits or the list of devices, `check_meter()` / `check_shelly()` test them,
 | Pi, SD card: `/opt/energie-collector/collector.db` | `sample` (a row per plug and minute), `gas_pulse`, `gas_calib` | every night at 03:15 `sqlite3 .backup` to `/opt/energie-collector/backup/collector-Mon.db` … `-Sun.db` (seven days back); with `backup_rsync_target` also to the NAS |
 | Pi: `/opt/energie-collector/collector.toml` | devices (name → IP), interval, port, gas settings | written by Ansible from `deploy/inventory.yml` |
 | PC: `energie.db` (project folder, or `ENERGIE_DB`) | `shelly_counters` (synced counters), `meter_readings` (photos, manual, gas pulses), `shelly_periods` (24 h totals from screenshots), `pending_reads`, `settings` | a copy before every schema migration (`energie-backup-v<N>-<time>.db`) |
+| Pi, when the app runs there (role `app`): `/var/lib/energie/` | `energie.db` as above, uploaded photos and screenshots | `energie-<day>.db` with the nightly collector backup; photos and screenshots to the NAS |
 | PC: photo and screenshot folders (Settings, or `ENERGIE_PHOTOS` / `ENERGIE_SCREENSHOTS`) | the original images | the user's own |
 | PC: `deploy/inventory.yml` | the Pi's address and user, the plugs' names and addresses | local only |
 | Browser (`localStorage`) | language, hidden devices in the charts | — |
@@ -198,6 +199,10 @@ stop
   inventory: `make deploy` again.
 - **On the Pi** systemd keeps the collector running (`Restart=always`, started at boot) and
   `unattended-upgrades` installs security updates every day. SSH accepts keys only.
+- **Optionally the app on the Pi too** (role `app`, `energie_app_enabled`): installed from this
+  checkout into a venv, the service `energie-app` on port 8510 in the home network, its data in
+  `/var/lib/energie`, the collector at `127.0.0.1`. Gemma stays on a PC with a GPU
+  (`app_ollama_url`); without it the numbers and charts work, reading photos waits.
 
 ## 5 · When something fails
 

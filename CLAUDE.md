@@ -26,7 +26,8 @@ utility accounts, no cloud APIs, no data to third parties. Treat that as non-neg
 - Chart.js 4.4.4 bundled in `static/vendor/` (with its MIT licence), served under `/static`
 - Local LLM: Gemma 4 via Ollama at `http://localhost:11434`; default `gemma4:26b-a4b-it-qat`
   (digit reading needs accuracy), `gemma4:e4b` and `gemma4:31b` are also installed on the user's PC
-- Runs at `http://localhost:8510` (Financie uses 8500/8501), demo at 8511
+- Runs at `http://localhost:8510` (Financie uses 8500/8501), demo at 8511; optionally on the Pi
+  (`deploy/` role `app`, `0.0.0.0:8510` in the home network, Gemma from a PC over `ENERGIE_OLLAMA_URL`)
 - Environment variables all start with `ENERGIE_`: `ENERGIE_DB`, `ENERGIE_PHOTOS`,
   `ENERGIE_SCREENSHOTS`, `ENERGIE_COLLECTOR_URL`, `ENERGIE_GEMMA_MODEL`, `ENERGIE_OLLAMA_URL`
 - `collector/` runs on a Raspberry Pi / Odroid: Python standard library only (3.11+, `tomllib`),
@@ -56,7 +57,7 @@ every source file.
 | `scripts/check_venv.py` | guards the Python version of `.venv` (shared with the other projects) |
 | `scripts/readme_screenshots.py` | `make screenshots`: README images in `docs/images` from the demo |
 | `docs/architecture.md` | parts, data flow, storage, deployment (PlantUML); picture from `docs/diagrams/architecture.drawio` (`make diagrams`) |
-| `deploy/` | Ansible for the Pi: `make deploy` (roles `base`, `collector`, `backup`), `make discover`; runs in WSL on Windows; the clean Pi first: `docs/raspberry-pi.md` |
+| `deploy/` | Ansible for the Pi: `make deploy` (roles `base`, `collector`, `app` (optional: the web app on the Pi, Gemma from a PC via `app_ollama_url`), `backup`), `make discover`; runs in WSL on Windows; the clean Pi first: `docs/raspberry-pi.md` |
 
 ## Conventions
 
