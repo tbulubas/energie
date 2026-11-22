@@ -11,6 +11,7 @@ all:
         energy-pi:
           ansible_host: 192.168.178.50         # fixed IP of the Pi (WSL usually cannot resolve .local)
           ansible_user: pi                     # the user created in Raspberry Pi Imager
+          ansible_python_interpreter: /usr/bin/python3   # the system Python; avoids the discovery warning
           ansible_ssh_common_args: -o StrictHostKeyChecking=accept-new
 
           # The PC's time zone: the collector stores local time, the app compares it with photo times.

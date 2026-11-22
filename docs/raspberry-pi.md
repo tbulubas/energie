@@ -110,6 +110,9 @@ backup.
 
 | Problem | Remedy |
 |---|---|
+| Imager: *Error writing to storage device* or *Storage device removed* | Windows' System log shows `disk` event 7 (bad block) for a worn card, or Kernel-PnP *surprise removed … missing on the bus* for a USB reader that drops out under load; try a new card, then another reader — a built-in SD slot often works where USB readers fail |
+| `wsl -e cat ~/.ssh/…` finds nothing | PowerShell expands `~` to the Windows home; use `wsl -e sh -c 'cat ~/.ssh/id_ed25519.pub'` |
+| Commands after `ssh …` run on the PC | paste the Pi's commands only once its prompt shows; lines pasted together with `ssh` run locally after logout |
 | No `energy-pi` in the router after 5 minutes | power supply and cable; check the card is fully inserted; write it again with Imager |
 | `ssh: Permission denied (publickey)` | the key in Imager was not the one from WSL; write the card again, or log in with a monitor and keyboard and add the key to `~/.ssh/authorized_keys` |
 | `REMOTE HOST IDENTIFICATION HAS CHANGED` after rewriting the card | expected: `ssh-keygen -R 192.168.178.50`, then connect again |

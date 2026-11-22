@@ -55,6 +55,9 @@ make deploy                                  # again, with the devices
 make deploy ARGS="--check --diff"            # only show what would change
 ```
 
+With a passphrase on the SSH key, load it into an agent first (once per WSL shell):
+`eval $(ssh-agent) && ssh-add` — Ansible cannot answer the passphrase prompt itself.
+
 `make deploy` asks for the *BECOME password*: the password of the user created in Imager (Raspberry
 Pi OS asks for it on every `sudo`). The last task prints the API address — enter it in the app
 (*Settings*, `http://<IP of the Pi>:8600`). Without make (Linux, macOS, or inside WSL):
