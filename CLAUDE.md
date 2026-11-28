@@ -90,8 +90,10 @@ every source file.
   `floor`, `device`). Only `de.json`/`sk.json` and the user's own names are in other languages;
   `test_i18n.py` fails on German or Slovak letters in the code.
 - **Settings** live in the `settings` table (Settings tab); `db.get_setting()` falls back to the
-  `ENERGIE_*` variable, then to `DEFAULT_SETTINGS`. Prices and gas factors there are placeholders until
-  the user enters the values from the bills.
+  `ENERGIE_*` variable, then to `DEFAULT_SETTINGS`. Gas factors there are placeholders until the user
+  enters the values from the bills. **Prices** live in the `tariffs` table (meter, `valid_from`, €/kWh,
+  €/month, gross); `analysis.tariff_at()` picks the one of a day, `cost_outlook()` gives the yearly
+  cost and monthly advance; without a tariff `db.DEFAULT_PRICE_EUR_KWH` is a placeholder.
 - **Schema changes go through migrations.** Bump `SCHEMA_VERSION`; `init_db()` backs the database up
   (`<stem>-backup-v<old>-<timestamp>.db`) before migrating. Never require a re-import.
 - **Time** comes from the file name (`IMG_YYYYMMDD_HHMMSS…`, `Screenshot_YYYYMMDD-HHMMSS…`), else EXIF

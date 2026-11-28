@@ -42,9 +42,17 @@ def chat(prompt: str, images: list[bytes] | None = None, json_schema: dict | Non
                "options": {"temperature": 0.0, "num_ctx": 8192}}
     if json_schema:
         payload["format"] = json_schema
+        # No thinking for structured answers: Gemma 4 can think about a meter counter until the
+        # context is full and then return nothing; reading what is in a picture needs no reasoning,
+        # and without it a read takes seconds instead of minutes.
+        payload["think"] = False
     r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=timeout)
     r.raise_for_status()
-    return r.json()["message"]["content"]
+    out = r.json()
+    content = out["message"]["content"]
+    if json_schema and not content.strip():
+        raise ValueError(f"empty answer from {MODEL} (done_reason: {out.get('done_reason')})")
+    return content
 
 
 # ---------- images ----------
@@ -67,26 +75,32 @@ def is_total(title: str) -> bool:
 
 # ---------- meters ----------
 
+# Gemma gives boxes the way it was trained: box_2d = [ymin, xmin, ymax, xmax], 0-1000. Asked for
+# [x0, y0, x1, y1] it still answers in its own order, and the crop misses the counter.
 BBOX_SCHEMA = {
     "type": "object",
     "properties": {
         "meter": {"type": "string", "enum": ["electricity", "gas", "unknown"]},
-        "box": {"type": "array", "items": {"type": "integer"}, "minItems": 4, "maxItems": 4,
-                "description": "[x0, y0, x1, y1] of the counter, coordinates 0-1000"},
+        "box_2d": {"type": "array", "items": {"type": "integer"}, "minItems": 4, "maxItems": 4,
+                   "description": "[ymin, xmin, ymax, xmax] of the counter, 0-1000"},
     },
-    "required": ["meter", "box"],
+    "required": ["meter", "box_2d"],
 }
 
+# All digits in one row: asked for black and red digits apart, Gemma often counts a red drum as a
+# black one (a gas reading 100 times too large). Where the decimal point goes is a property of the
+# meter, not of the photo: the settings say how many digits are decimals (DECIMALS by default).
 METER_SCHEMA = {
     "type": "object",
     "properties": {
         "meter": {"type": "string", "enum": ["electricity", "gas"]},
-        "black_digits": {"type": "string", "description": "the black (whole-unit) digits, left to right"},
-        "red_digits": {"type": "string", "description": "the red (decimal) digits, left to right"},
+        "digits": {"type": "string",
+                   "description": "every digit of the counter, left to right, black and red, no separators"},
         "rolling": {"type": "boolean", "description": "the last digit is between two values"},
     },
-    "required": ["meter", "black_digits", "red_digits", "rolling"],
+    "required": ["meter", "digits", "rolling"],
 }
+DECIMALS = {"electricity": 1, "gas": 3}                 # red drums of a Ferraris meter / a gas meter
 
 METER_HINT = (
     "An electricity meter counts kWh: black digits are whole kWh, the red digit(s) are tenths. "
@@ -95,20 +109,24 @@ METER_HINT = (
 
 
 def locate_counter(img: Image.Image) -> tuple[str, tuple[int, int, int, int] | None]:
+    """Which meter, and the box of its counter as (x0, y0, x1, y1) 0-1000 (None if implausible).
+    A photo taken sideways is turned upright by load_image() from its EXIF orientation."""
     prompt = ("The photo shows an electricity meter or a gas meter. " + METER_HINT +
-              "Tell which meter it is and give the bounding box of the mechanical counter with the "
-              "digits, in coordinates 0-1000 (x0, y0, x1, y1).")
+              "Tell which meter it is and give the bounding box box_2d ([ymin, xmin, ymax, xmax], 0-1000) "
+              "of the mechanical counter with the digits.")
     out = json.loads(chat(prompt, images=[to_jpeg(img, 1024)], json_schema=BBOX_SCHEMA))
-    x0, y0, x1, y1 = out["box"]
-    ok = 0 <= x0 < x1 <= 1000 and 0 <= y0 < y1 <= 1000 and (x1 - x0) > 50
+    y0, x0, y1, x1 = out["box_2d"]
+    # a counter is wide and low; anything else is a miss, and the whole picture is read instead
+    ok = 0 <= x0 < x1 <= 1000 and 0 <= y0 < y1 <= 1000 and (x1 - x0) > 50 and (x1 - x0) > (y1 - y0)
     return out["meter"], ((x0, y0, x1, y1) if ok else None)
 
 
 def crop_box(img: Image.Image, box: tuple[int, int, int, int]) -> Image.Image:
-    """Crop a 0-1000 box with a margin around it (the counter is wide and low)."""
+    """Crop a 0-1000 box with a margin around it (the counter is wide and low; the box often ends
+    just before the red drums, hence the wide margin at the sides)."""
     W, H = img.size
     x0, y0, x1, y1 = box
-    mx, my = (x1 - x0) * 0.15, (y1 - y0) * 0.6
+    mx, my = (x1 - x0) * 0.3, (y1 - y0) * 0.6
     return img.crop((max(0, (x0 - mx) * W / 1000), max(0, (y0 - my) * H / 1000),
                      min(W, (x1 + mx) * W / 1000), min(H, (y1 + my) * H / 1000)))
 
@@ -119,8 +137,9 @@ def digits_value(black: str, red: str) -> float:
     return float(f"{int(black or 0)}.{red or '0'}")
 
 
-def read_meter(data: bytes, two_pass: bool = True) -> dict:
-    """Read a meter photo in two passes: find the counter, then read the enlarged crop."""
+def read_meter(data: bytes, two_pass: bool = True, decimals: dict[str, int] | None = None) -> dict:
+    """Read a meter photo in two passes: find the counter, then read the enlarged crop.
+    `decimals`: how many of the counter's digits are decimals, per meter (default DECIMALS)."""
     img = load_image(data)
     crop, hint = img, None
     if two_pass:
@@ -131,9 +150,12 @@ def read_meter(data: bytes, two_pass: bool = True) -> dict:
         except Exception as e:  # noqa: BLE001 - fall back to the whole picture
             print(f"[gemma] locate_counter failed: {e}")
     prompt = (METER_HINT + (f"This is probably the {hint} meter. " if hint in ("electricity", "gas") else "") +
-              "Read the counter. If a drum is between two digits, write the LOWER one and set rolling=true. "
-              "Do not guess: write only what you see.")
+              "Write every digit of the counter, left to right, black and red together. If a drum is between "
+              "two digits, write the LOWER one and set rolling=true. Do not guess: write only what you see.")
     out = json.loads(chat(prompt, images=[to_jpeg(crop, 1280)], json_schema=METER_SCHEMA))
+    digits = "".join(ch for ch in out["digits"] if ch.isdigit())
+    k = {**DECIMALS, **(decimals or {})}.get(out["meter"], 0)
+    out["black_digits"], out["red_digits"] = (digits[:-k], digits[-k:]) if k else (digits, "")
     out["value"] = digits_value(out["black_digits"], out["red_digits"])
     out["two_pass"] = crop is not img
     return out

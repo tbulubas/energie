@@ -22,6 +22,23 @@ def test_older_database_is_backed_up_first(temp_db):
     assert len(backups) == 1
 
 
+def test_v1_prices_become_tariffs(temp_db):
+    con = sqlite3.connect(temp_db)                      # a v1 database: prices in the settings
+    con.execute("DROP TABLE tariffs")
+    con.executemany("INSERT INTO settings VALUES(?,?)", [("electricity_eur_kwh", "0.352"), ("gas_eur_kwh", ""),
+                                                         ("max_daily_gas", "12")])
+    con.execute("PRAGMA user_version = 1")
+    con.commit()
+    con.close()
+    db.init_db()
+    con = db.get_db()
+    assert db.tariffs(con) == [{"meter": "electricity", "valid_from": db.EARLIEST, "energy_eur_kwh": 0.352,
+                                "base_eur_month": 0.0}]
+    assert [r[0] for r in con.execute("SELECT key FROM settings")] == ["max_daily_gas"]
+    con.close()
+    assert len(list(temp_db.parent.glob("test-backup-v1-*.db"))) == 1
+
+
 def test_settings_fall_back_to_environment_then_default(con, monkeypatch):
     monkeypatch.setattr(db, "COLLECTOR_URL", "http://env:8600")
     assert db.get_setting(con, "collector_url") == "http://env:8600"

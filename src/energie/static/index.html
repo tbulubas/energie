@@ -4,6 +4,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- "Add to home screen" on a phone: name, icon and the tab it opens (Readings) -->
+<link rel="manifest" href="/static/manifest.json">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<meta name="theme-color" content="#0f1420">
 <title>Energie</title>
 <script src="/static/vendor/chart.umd.js"></script>
 <style>
@@ -34,9 +39,9 @@
   th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
   th { color:var(--muted); font-weight:500; }
   td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
-  select, input, button.btn { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:7px 10px; font-size:14px; }
-  button.btn { cursor:pointer; } button.btn.primary { background:var(--accent); border-color:var(--accent); }
-  button.btn.ok { border-color:var(--green); } button.btn.no { border-color:var(--red); }
+  select, input, .btn { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:7px 10px; font-size:14px; }
+  .btn { cursor:pointer; } .btn.primary { background:var(--accent); border-color:var(--accent); }
+  .btn.ok { border-color:var(--green); } .btn.no { border-color:var(--red); }
   .toolbar { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center; }
   .hidden { display:none !important; }
   h2 { font-size:17px; margin:0 0 4px; } .hint { color:var(--muted); font-size:13px; margin:0 0 12px; }
@@ -55,6 +60,18 @@
   a.file { color:var(--accent); }
   #zoom { position:fixed; inset:0; background:rgba(0,0,0,.85); display:flex; align-items:center; justify-content:center; z-index:9; }
   #zoom img { max-width:95vw; max-height:95vh; }
+  label.btn { display:inline-block; } .btn.big { font-size:17px; padding:12px 22px; }
+  .btn.busy { opacity:.6; pointer-events:none; }
+  .scroll { overflow-x:auto; } #rdTable td:first-child { white-space:nowrap; }
+  .dec { color:var(--muted); font-size:.82em; }
+  #tarTable td:nth-child(2), #tarTable td:nth-child(5) { white-space:nowrap; }
+  /* a phone: less padding, forms and review in one column */
+  @media (max-width:600px) {
+    header { padding:10px 12px; gap:8px; } main { padding:12px; } .card { padding:14px; }
+    nav button { padding:6px 10px; }
+    .form, .pend { grid-template-columns:1fr; }
+    #tab-readings .btn.big { width:100%; text-align:center; }
+  }
 </style>
 </head>
 <body>
@@ -81,6 +98,8 @@
   <div class="cards">
     <div class="card"><div class="label" data-i18n="kpi_electricity"></div><div class="value" id="kEl">–</div><div class="sub" id="kElSub"></div></div>
     <div class="card"><div class="label" data-i18n="kpi_coverage"></div><div class="value" id="kCov">–</div><div class="sub" id="kCovSub"></div></div>
+    <div class="card"><div class="label" data-i18n="kpi_advance_electricity"></div><div class="value" id="kAdvElectricity">–</div><div class="sub" id="kAdvElectricitySub"></div></div>
+    <div class="card hidden" id="cAdvGas"><div class="label" data-i18n="kpi_advance_gas"></div><div class="value" id="kAdvGas">–</div><div class="sub" id="kAdvGasSub"></div></div>
     <div class="card"><div class="label" data-i18n="kpi_gas"></div><div class="value" id="kGas">–</div><div class="sub" id="kGasSub"></div></div>
     <div class="card"><div class="label" data-i18n="kpi_period"></div><div class="value" id="kDays">–</div><div class="sub" id="kDaysSub"></div></div>
   </div>
@@ -114,16 +133,23 @@
 </section>
 
 <section id="tab-readings" class="hidden">
+  <!-- a new reading: a photo of the meter (on a phone the camera opens), or the value typed in -->
+  <div class="card"><h2 data-i18n="new_reading"></h2><p class="hint" data-i18n="new_reading_hint"></p>
+    <div class="toolbar">
+      <label class="btn primary big" id="qPhotoBtn" for="qPhoto">📷 <span data-i18n="photo_btn"></span></label>
+      <input type="file" id="qPhoto" accept="image/*" capture="environment" class="hidden"></div>
+    <div class="toolbar" style="margin-bottom:0">
+      <span class="hint" style="margin:0" data-i18n="add_fix"></span>
+      <input id="nTs" type="datetime-local">
+      <select id="nMeter"><option value="electricity" data-i18n="m_electricity"></option><option value="gas" data-i18n="m_gas"></option></select>
+      <input id="nVal" size="10" inputmode="decimal" enterkeyhint="done" data-i18n-ph="value_ph">
+      <button class="btn" onclick="saveReading()" data-i18n="save"></button></div>
+    <div class="msg hidden" id="rdMsg" style="margin:14px 0 0"></div></div>
+  <p class="hint" data-i18n="readings_hint"></p>
   <div class="toolbar">
     <select id="rdMeter"><option value="" data-i18n="all_meters"></option><option value="electricity" data-i18n="m_electricity"></option><option value="gas" data-i18n="m_gas"></option></select>
-    <span class="hint" style="margin:0" data-i18n="add_fix"></span>
-    <input id="nTs" placeholder="2026-11-09 07:30" size="16">
-    <select id="nMeter"><option value="electricity" data-i18n="m_electricity"></option><option value="gas" data-i18n="m_gas"></option></select>
-    <input id="nVal" size="10" data-i18n-ph="value_ph">
-    <button class="btn primary" onclick="saveReading()" data-i18n="save"></button>
   </div>
-  <div class="msg hidden" id="rdMsg"></div>
-  <div class="card"><table id="rdTable"></table></div>
+  <div class="card scroll"><table id="rdTable"></table></div>
 </section>
 
 <section id="tab-review" class="hidden">
@@ -153,6 +179,16 @@
 </section>
 
 <section id="tab-settings" class="hidden">
+  <!-- prices with the date they start: a price holds until the next one of the same meter -->
+  <div class="card"><h2 data-i18n="tariffs_title"></h2><p class="hint" data-i18n="tariffs_hint"></p>
+    <div class="scroll"><table id="tarTable"></table></div>
+    <div class="toolbar" style="margin:12px 0 0">
+      <select id="tMeter"><option value="electricity" data-i18n="m_electricity"></option><option value="gas" data-i18n="m_gas"></option></select>
+      <input id="tFrom" type="date">
+      <input id="tEnergy" size="9" inputmode="decimal" data-i18n-ph="ct_kwh_ph">
+      <input id="tBase" size="9" inputmode="decimal" data-i18n-ph="eur_month_ph">
+      <button class="btn primary" onclick="saveTariff()" data-i18n="add"></button></div>
+    <div class="hint" id="tarInfo" style="margin:8px 0 0"></div></div>
   <div class="card"><h2 data-i18n="settings_title"></h2><p class="hint" data-i18n="settings_hint"></p>
     <div class="form" id="setForm"></div>
     <div class="toolbar" style="margin-top:16px"><button class="btn primary" onclick="saveSettings()" data-i18n="save"></button>
@@ -197,6 +233,12 @@ const t = (k, p) => (MSG[k] ?? MSG_EN[k] ?? k).replace(/\{(\w+)\}/g, (m, n) =>
   p && n in p ? (Array.isArray(p[n]) ? p[n].join(', ') : String(p[n])) : m);
 const $ = s => document.querySelector(s);
 const nf = (x, d=1) => x==null ? '–' : Number(x).toLocaleString(LOCALE[lang], {minimumFractionDigits:d, maximumFractionDigits:d});
+// A meter reading as reported to the supplier: the whole units stand out, the decimals (cut off when
+// reporting, kept for the calculations) are muted. Cut, not rounded: 12345.678 is reported as 12345.
+function readingHtml(x, d) {
+  const sep = (1.5).toLocaleString(LOCALE[lang]).charAt(1), [, frac = ''] = Number(x).toFixed(d).split('.');
+  return `${nf(Math.trunc(x), 0)}${d ? `<span class="dec">${sep}${frac}</span>` : ''}`;
+}
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dlabel = s => new Date(s+'T12:00').toLocaleDateString(LOCALE[lang], {weekday:'short', day:'numeric', month:'numeric'});
 // numbers and dates inside findings and issues in the UI language
@@ -252,6 +294,9 @@ async function loadOverview() {
   const ov = await api('/api/overview'), k = ov.kpi;
   $('#kEl').textContent = k.el_per_day==null ? '–' : `${nf(k.el_per_day)} ${t('kwh_day')}`;
   $('#kElSub').textContent = k.el_per_year==null ? '' : t('el_sub', {kwh_year: nf(k.el_per_year,0), eur: nf(k.el_eur_year,0)});
+  showAdvance(ov.outlook.electricity, 'Electricity');
+  $('#cAdvGas').classList.toggle('hidden', !ov.outlook.gas);
+  if (ov.outlook.gas) showAdvance(ov.outlook.gas, 'Gas');
   $('#kCov').textContent = k.coverage==null ? '–' : Math.round(k.coverage*100)+' %';
   $('#kCovSub').textContent = k.unmetered==null ? '' : t('cov_sub', {kwh: nf(k.unmetered)});
   $('#kGas').textContent = k.gas_m3_day==null ? '–' : `${nf(k.gas_m3_day,2)} ${t('m3_day')}`;
@@ -273,6 +318,20 @@ async function loadOverview() {
     datasets:[{data:ov.gas.map(x=>x.m3), backgroundColor:C.orange, borderRadius:4}]},
     options:barOpts('m³', {plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>{const g=ov.gas[c.dataIndex];
       return [`${nf(g.m3,3)} m³/24 h`, `≈ ${nf(g.kwh,1)} kWh`, t('tt_interval', {hours: nf(g.hours,0)})];}}}}})});
+}
+// Monthly advance: the consumption so far as a year, at the next announced price (else today's),
+// divided by 12. The sub-line says which price, the yearly sum, how many days it rests on, and
+// what it is at today's price when a change is coming.
+function showAdvance(o, id) {
+  const val = $('#kAdv' + id), sub = $('#kAdv' + id + 'Sub');
+  if (!o) { val.textContent = '–'; sub.textContent = t('adv_none'); return; }
+  const c = o.next || o.now;
+  val.textContent = t('eur_per_month', {eur: nf(c.eur_month, 0)});
+  sub.textContent = [
+    o.next ? t('adv_from', {date: dateText(o.next.valid_from)}) : '',
+    t('adv_sub', {ct: nf(c.energy_eur_kwh * 100, 2), base: nf(c.base_eur_month, 2), year: nf(c.eur_year, 0), days: nf(o.days, 0)}),
+    o.next ? t('adv_today', {eur: nf(o.now.eur_month, 0)}) : '',
+    c.placeholder ? t('adv_placeholder') : ''].filter(Boolean).join(' · ');
 }
 async function loadComment() {
   $('#btnComment').disabled = true; $('#comment').textContent = t('commentary_working');
@@ -380,9 +439,10 @@ $('#hourNone').onclick = () => { hourNames().forEach(n=>hourHidden.add(n)); save
 const meterName = m => t('m_'+m);
 const noteText = n => { const k = 'note_' + (n || '').replace(/ /g, '_'); return has(k) ? t(k) : n ?? ''; };
 async function loadReadings() {
+  if (!$('#nTs').value) $('#nTs').value = nowLocal();
   const rows = await api('/api/readings?meter=' + $('#rdMeter').value);
   $('#rdTable').innerHTML = `<tr><th>${t('col_time')}</th><th>${t('col_meter')}</th><th class=num>${t('col_value')}</th><th>${t('col_method')}</th><th>${t('col_source')}</th><th>${t('col_note')}</th><th></th></tr>` +
-    rows.map(r=>`<tr><td>${esc(r.ts)}</td><td>${esc(meterName(r.meter))}</td><td class=num>${nf(r.value, r.meter==='gas'?3:1)}</td>
+    rows.map(r=>`<tr><td>${esc(r.ts)}</td><td>${esc(meterName(r.meter))}</td><td class=num>${readingHtml(r.value, r.meter==='gas'?3:1)}</td>
       <td>${esc(t('method_'+r.method))}</td><td>${r.source_file?`<a href="#" class="file" data-zoom="${esc(r.source_file)}">${esc(r.source_file)}</a>`:''}</td>
       <td class=hint>${esc(noteText(r.note))}</td>
       <td><button class="btn" data-del-ts="${esc(r.ts)}" data-del-meter="${esc(r.meter)}">✕</button></td></tr>`).join('');
@@ -394,15 +454,43 @@ $('#rdTable').onclick = async e => {
   if (d && confirm(t('confirm_delete', {meter: meterName(d.dataset.delMeter), time: d.dataset.delTs}))) {
     await api(`/api/readings?ts=${encodeURIComponent(d.dataset.delTs)}&meter=${d.dataset.delMeter}`, {method:'DELETE'}); loadReadings(); }
 };
+// the time field starts at "now" (local time, to the minute), as a reading is usually taken right away
+function nowLocal() { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); }
+function showMsg(html) { $('#rdMsg').classList.toggle('hidden', !html); $('#rdMsg').innerHTML = html; }
 async function saveReading() {
+  const meter = $('#nMeter').value, value = parseFloat($('#nVal').value.replace(',','.'));
   try {
     const r = await api('/api/readings', {method:'PUT', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ts:$('#nTs').value.trim(), meter:$('#nMeter').value, value:parseFloat($('#nVal').value.replace(',','.'))})});
-    $('#rdMsg').classList.toggle('hidden', !r.warnings.length);
-    $('#rdMsg').textContent = t('saved_warn') + r.warnings.map(issueText).join('; ');
+      body: JSON.stringify({ts:$('#nTs').value.replace('T', ' ').slice(0, 16), meter, value})});
+    showMsg(esc(r.warnings.length ? t('saved_warn') + r.warnings.map(issueText).join('; ')
+      : t('saved_reading', {meter: meterName(meter), value: `${nf(value, meter==='gas'?3:1)} ${unit(meter)}`})));
+    $('#nVal').value = ''; $('#nTs').value = '';           // the next one starts at "now" again
     loadReadings();
-  } catch (e) { $('#rdMsg').classList.remove('hidden'); $('#rdMsg').textContent = e.message; }
+  } catch (e) { showMsg(esc(e.message)); }
 }
+// A photo of a meter: uploaded and read by Gemma at once; Gemma also tells which meter it is.
+const unit = m => m === 'gas' ? 'm³' : 'kWh';
+function photoResult(r) {
+  if (!r) return esc(t('photo_queued'));
+  const issues = (r.issues || []).map(i => esc(issueText(i))).join('<br>');
+  // the text is escaped first, then the reading goes in as HTML (whole units bold, decimals muted)
+  const read = r.value == null ? '' : t('photo_value', {meter: meterName(r.meter), value: '\u0001', unit: unit(r.meter), time: r.ts});
+  const msg = key => esc(t(key, {reading: read})).replace('\u0001', `<b>${readingHtml(r.value, r.meter==='gas'?3:1)}</b>`);
+  if (r.status === 'accepted') return msg('photo_stored');
+  if (r.status === 'pending') return `${msg('photo_review')}<div class="issue">${issues}</div><a href="#review" class="file">${esc(t('nav_review'))} →</a>`;
+  return `${esc(t('photo_failed'))}<div class="issue">${issues}</div>`;
+}
+$('#qPhoto').onchange = async () => {
+  const f = $('#qPhoto').files[0];
+  if (!f) return;
+  $('#qPhotoBtn').classList.add('busy'); showMsg(esc(t('photo_reading')));
+  try {
+    const fd = new FormData(); fd.append('kind', 'meter'); fd.append('read', 'true'); fd.append('file', f);
+    showMsg(photoResult((await api('/api/upload', {method:'POST', body:fd})).result));
+  } catch (e) { showMsg(esc(e.message)); }
+  $('#qPhotoBtn').classList.remove('busy'); $('#qPhoto').value = '';
+  loadReadings(); refreshStatus();
+};
 function zoom(name) { $('#zoom img').src = '/api/image?name=' + encodeURIComponent(name); $('#zoom').classList.remove('hidden'); }
 
 // ---------- review ----------
@@ -483,10 +571,43 @@ async function doSync() {
 }
 
 // ---------- settings ----------
-const SETTINGS = [['sec_prices', ['electricity_eur_kwh','gas_eur_kwh','gas_correction_factor','gas_calorific_value']],
-                  ['sec_checks', ['max_daily_electricity','max_daily_gas','auto_accept']],
+const SETTINGS = [['sec_gas', ['gas_correction_factor','gas_calorific_value']],
+                  ['sec_checks', ['max_daily_electricity','max_daily_gas','decimals_electricity','decimals_gas','auto_accept']],
                   ['sec_folders', ['photos_dir','screenshots_dir','collector_url','sync_minutes']]];
+// ---------- tariffs ----------
+const EARLIEST = '2000-01-01';                     // a price that held before any known change
+const dateText = s => new Date(s+'T12:00').toLocaleDateString(LOCALE[lang]);
+const parseNum = s => parseFloat(String(s).trim().replace(',', '.'));
+async function loadTariffs() {
+  const r = await api('/api/tariffs'), today = nowLocal().slice(0, 10), current = {};
+  r.tariffs.forEach(x => { if (x.valid_from <= today) current[x.meter] = x.valid_from; });
+  const state = x => x.valid_from > today ? t('tariff_future') : current[x.meter] === x.valid_from ? t('tariff_current') : '';
+  $('#tarTable').innerHTML = `<tr><th>${t('col_meter')}</th><th>${t('col_valid_from')}</th><th class=num>${t('col_ct_kwh')}</th>
+    <th class=num>${t('col_eur_month')}</th><th></th><th></th></tr>` + (r.tariffs.length ? r.tariffs.map(x => `<tr>
+    <td>${esc(meterName(x.meter))}</td><td>${x.valid_from === EARLIEST ? t('tariff_always') : esc(dateText(x.valid_from))}</td>
+    <td class=num>${nf(x.energy_eur_kwh * 100, 2)}</td><td class=num>${nf(x.base_eur_month, 2)}</td><td class=hint>${state(x)}</td>
+    <td><button class="btn" data-tdel="${esc(x.meter)}|${esc(x.valid_from)}">✕</button></td></tr>`).join('')
+    : `<tr><td colspan=6 class=hint>${t('tariffs_none', {el: nf(r.defaults.electricity * 100, 0), gas: nf(r.defaults.gas * 100, 0)})}</td></tr>`);
+}
+async function saveTariff() {
+  try {
+    await api('/api/tariffs', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+      meter: $('#tMeter').value, valid_from: $('#tFrom').value || EARLIEST,
+      energy_eur_kwh: parseNum($('#tEnergy').value) / 100, base_eur_month: parseNum($('#tBase').value || '0')})});
+    ['#tFrom', '#tEnergy', '#tBase'].forEach(k => $(k).value = '');
+    $('#tarInfo').textContent = t('tariff_saved'); loadTariffs();
+  } catch (e) { $('#tarInfo').textContent = e.message; }
+}
+$('#tarTable').onclick = async e => {
+  const b = e.target.closest('[data-tdel]');
+  if (!b) return;
+  const [meter, from] = b.dataset.tdel.split('|');
+  if (!confirm(t('confirm_tariff_delete', {meter: meterName(meter), from: from === EARLIEST ? t('tariff_always') : dateText(from)}))) return;
+  await api(`/api/tariffs?meter=${meter}&valid_from=${from}`, {method:'DELETE'}); loadTariffs();
+};
+
 async function loadSettings() {
+  loadTariffs();
   const s = await api('/api/settings');
   $('#setForm').innerHTML = SETTINGS.map(([sec, keys]) => `<h3>${t(sec)}</h3>` + keys.map(k => k === 'auto_accept'
     ? `<label for="set_${k}">${t('s_'+k)}</label><div><input type="checkbox" id="set_${k}" ${s[k]==='1'?'checked':''}></div>`

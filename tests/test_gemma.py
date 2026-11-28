@@ -41,7 +41,7 @@ def test_tall_screenshot_is_cut_into_overlapping_bands():
 
 def test_crop_box_keeps_a_margin():
     crop = gemma.crop_box(Image.new("RGB", (1000, 1000)), (200, 400, 600, 450))
-    assert crop.size == (520, 110)
+    assert crop.size == (640, 110)
 
 
 def test_read_meter_two_passes(monkeypatch):
@@ -50,15 +50,38 @@ def test_read_meter_two_passes(monkeypatch):
     def post(url, json=None, timeout=None):
         sent.append(json)
         props = json["format"]["properties"]
-        if "box" in props:
-            return FakeResponse({"meter": "gas", "box": [100, 300, 700, 400]})
-        return FakeResponse({"meter": "gas", "black_digits": "15014", "red_digits": "350", "rolling": False})
+        if "box_2d" in props:                       # Gemma's order: [ymin, xmin, ymax, xmax]
+            return FakeResponse({"meter": "gas", "box_2d": [300, 100, 400, 700]})
+        return FakeResponse({"meter": "gas", "digits": "15014 350", "rolling": False})
 
     monkeypatch.setattr(gemma.requests, "post", post)
     r = gemma.read_meter(png(1200, 900))
-    assert r["value"] == 15014.35 and r["two_pass"] and len(sent) == 2
-    assert all(m["messages"][0]["images"] and m["options"]["temperature"] == 0 for m in sent)
+    # all digits in one row; the decimal point comes from the meter's number of red drums
+    assert r["value"] == 15014.35 and (r["black_digits"], r["red_digits"]) == ("15014", "350")
+    assert r["two_pass"] and len(sent) == 2
+    assert gemma.read_meter(png(1200, 900), decimals={"gas": 2})["value"] == 150143.5
+    # no thinking: it can fill the context and leave the answer empty
+    assert all(m["messages"][0]["images"] and m["options"]["temperature"] == 0 and m["think"] is False for m in sent)
     assert "probably the gas meter" in sent[1]["messages"][0]["content"]
+    # the crop is the counter (x 100-700, y 300-400 of 1000) with its margin, not a tall strip
+    crop = Image.open(io.BytesIO(__import__("base64").b64decode(sent[1]["messages"][0]["images"][0])))
+    assert crop.size[0] > 3 * crop.size[1]
+
+
+def test_a_tall_box_is_no_counter_and_an_empty_answer_is_an_error(monkeypatch):
+    monkeypatch.setattr(gemma, "chat", lambda *a, **k: json.dumps({"meter": "gas", "box_2d": [100, 450, 900, 550]}))
+    assert gemma.locate_counter(Image.new("RGB", (1000, 800))) == ("gas", None)
+
+    class Empty(FakeResponse):
+        def json(self):
+            return {"message": {"content": ""}, "done_reason": "length"}
+    monkeypatch.undo()
+    monkeypatch.setattr(gemma.requests, "post", lambda url, json=None, timeout=None: Empty(None))
+    try:
+        gemma.chat("read", json_schema={"type": "object"})
+        raise AssertionError("no error")
+    except ValueError as e:
+        assert "done_reason: length" in str(e)
 
 
 def test_read_shelly_merges_bands(monkeypatch):

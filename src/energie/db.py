@@ -22,7 +22,7 @@ SCREENSHOTS_DIR = os.environ.get("ENERGIE_SCREENSHOTS")
 COLLECTOR_URL = os.environ.get("ENERGIE_COLLECTOR_URL")
 
 # PRAGMA user_version of the current schema; init_db() migrates older databases
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meter_readings (
@@ -72,21 +72,36 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- prices from the supplier's letters and bills (gross, incl. VAT); a row holds from valid_from
+-- until the next row of the same meter
+CREATE TABLE IF NOT EXISTS tariffs (
+    meter          TEXT NOT NULL,           -- electricity | gas
+    valid_from     TEXT NOT NULL,           -- 'YYYY-MM-DD'
+    energy_eur_kwh REAL NOT NULL,           -- price per kWh (gas: per kWh after the m3 conversion)
+    base_eur_month REAL NOT NULL DEFAULT 0, -- standing charge per month
+    PRIMARY KEY (meter, valid_from)
+);
 """
 
 METERS = ("electricity", "gas")
 # older names in hand-made CSV files
 METER_ALIASES = {"strom": "electricity", "elektrina": "electricity", "power": "electricity", "plyn": "gas"}
 
+# Price per kWh until the user enters the prices from the bills (Settings tab, table tariffs)
+DEFAULT_PRICE_EUR_KWH = {"electricity": 0.32, "gas": 0.11}
+# the date of a price that held before any known change (prices moved from the settings in v2)
+EARLIEST = "2000-01-01"
+
 # Placeholders until the user enters the values from the bills (Settings tab)
 DEFAULT_SETTINGS = {
-    "electricity_eur_kwh": "0.32",
-    "gas_eur_kwh": "0.11",
     "gas_correction_factor": "0.955",      # Zustandszahl on the gas bill
     "gas_calorific_value": "11.35",        # Brennwert in kWh/m3 on the gas bill
     "max_daily_electricity": "60",         # plausibility limits for readings (per day)
     "max_daily_gas": "15",
-    "auto_accept": "1",                    # readings that pass all checks go straight in
+    "decimals_electricity": "1",           # digits after the decimal point on the counter (red drums)
+    "decimals_gas": "3",
+    "auto_accept": "1",                   # readings that pass all checks go straight in
     "photos_dir": "",
     "screenshots_dir": "",
     "collector_url": "",
@@ -109,10 +124,22 @@ def init_db():
     if existing and version < SCHEMA_VERSION:
         backup_db(con, version)
     con.executescript(SCHEMA)
-    # future migrations: if existing and version < 2: _migrate_v1_to_v2(con)
+    if existing and version < 2:
+        _migrate_v1_to_v2(con)
     con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     con.commit()
     con.close()
+
+
+def _migrate_v1_to_v2(con):
+    """v2 keeps prices with the date they start (table tariffs) instead of one price per meter in
+    the settings: a price the user had entered becomes a tariff valid from the start."""
+    for meter in METERS:
+        row = con.execute("SELECT value FROM settings WHERE key=?", (f"{meter}_eur_kwh",)).fetchone()
+        if row and row["value"] not in (None, ""):
+            con.execute("INSERT OR IGNORE INTO tariffs(meter, valid_from, energy_eur_kwh, base_eur_month) "
+                        "VALUES(?,?,?,0)", (meter, EARLIEST, float(row["value"])))
+        con.execute("DELETE FROM settings WHERE key=?", (f"{meter}_eur_kwh",))
 
 
 def backup_db(con, version: int) -> Path:
@@ -148,6 +175,27 @@ def set_setting(con, key: str, value: str | None):
 
 def all_settings(con) -> dict[str, str]:
     return {k: get_setting(con, k) for k in DEFAULT_SETTINGS}
+
+
+# ---------- tariffs ----------
+
+def tariffs(con, meter: str | None = None) -> list[dict]:
+    sql, args = "SELECT * FROM tariffs", ()
+    if meter:
+        sql, args = sql + " WHERE meter=?", (meter,)
+    return [dict(r) for r in con.execute(sql + " ORDER BY meter, valid_from", args)]
+
+
+def put_tariff(con, meter: str, valid_from: str, energy_eur_kwh: float, base_eur_month: float):
+    con.execute("""INSERT INTO tariffs(meter, valid_from, energy_eur_kwh, base_eur_month) VALUES(?,?,?,?)
+                   ON CONFLICT(meter, valid_from) DO UPDATE SET energy_eur_kwh=excluded.energy_eur_kwh,
+                   base_eur_month=excluded.base_eur_month""", (meter, valid_from, energy_eur_kwh, base_eur_month))
+    con.commit()
+
+
+def delete_tariff(con, meter: str, valid_from: str):
+    con.execute("DELETE FROM tariffs WHERE meter=? AND valid_from=?", (meter, valid_from))
+    con.commit()
 
 
 def folder(con, key: str) -> Path | None:

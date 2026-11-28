@@ -61,7 +61,7 @@ def _photo(con, name: str) -> Path:
 
 def test_plausible_reading_goes_straight_in(con, monkeypatch):
     add_readings(con, "electricity", [("2026-05-01 07:00", 1000.0)])
-    monkeypatch.setattr(gemma, "read_meter", lambda data, two_pass=True: {
+    monkeypatch.setattr(gemma, "read_meter", lambda data, **kw: {
         "meter": "electricity", "black_digits": "001009", "red_digits": "5", "rolling": False, "value": 1009.5})
     todo = importer.jobs(con)
     assert todo == [] and importer.new_files(con)["meter"] == []
@@ -76,7 +76,7 @@ def test_plausible_reading_goes_straight_in(con, monkeypatch):
 
 def test_misread_waits_for_review_and_can_be_corrected(con, monkeypatch):
     add_readings(con, "electricity", [("2026-05-01 07:00", 1000.0)])
-    monkeypatch.setattr(gemma, "read_meter", lambda data, two_pass=True: {
+    monkeypatch.setattr(gemma, "read_meter", lambda data, **kw: {
         "meter": "electricity", "black_digits": "101009", "red_digits": "5", "rolling": True, "value": 101009.5})
     p = _photo(con, "IMG_20260502_070000123.jpg")
     r = importer.run_job(con, "meter", [p])
@@ -90,10 +90,32 @@ def test_misread_waits_for_review_and_can_be_corrected(con, monkeypatch):
 def test_auto_accept_off_keeps_everything_for_review(con, monkeypatch):
     db.set_setting(con, "auto_accept", "0")
     add_readings(con, "gas", [("2026-05-01 07:00", 100.0)])
-    monkeypatch.setattr(gemma, "read_meter", lambda data, two_pass=True: {
+    monkeypatch.setattr(gemma, "read_meter", lambda data, **kw: {
         "meter": "gas", "black_digits": "00100", "red_digits": "900", "rolling": False, "value": 100.9})
     r = importer.run_job(con, "meter", [_photo(con, "IMG_20260502_070000123.jpg")])
     assert r["status"] == "pending" and r["issues"] == []
+
+
+def test_a_drum_read_twice_is_left_out_when_one_value_fits(con, monkeypatch):
+    add_readings(con, "electricity", [("2026-05-01 07:00", 1190.0)])
+    read = {"meter": "electricity", "black_digits": "0012018", "red_digits": "8", "rolling": True, "value": 12018.8}
+    monkeypatch.setattr(gemma, "read_meter", lambda data, **kw: dict(read))
+    r = importer.run_job(con, "meter", [_photo(con, "IMG_20260502_070000123.jpg")])
+    assert r["status"] == "accepted" and r["value"] == 1201.8          # "0012018|8" -> "001201|8"
+    row = con.execute("SELECT * FROM meter_readings WHERE ts='2026-05-02 07:00'").fetchone()
+    assert row["value"] == 1201.8 and row["note"] == "extra digit dropped"
+
+    # no value with a digit fewer fits: it waits for review as read
+    read.update(black_digits="0099999", value=99999.8)
+    r = importer.run_job(con, "meter", [_photo(con, "IMG_20260503_070000123.jpg")])
+    assert r["status"] == "pending" and r["value"] == 99999.8 and codes(r["issues"]) == ["increase_too_large"]
+
+
+def test_one_drum_less():
+    # 0412066|6: the last drum read twice ('66'); only a pair of equal digits counts
+    assert importer.one_drum_less("0412066", "6") == [41206.6]
+    assert importer.one_drum_less("100044", "511") == [10004.451, 10004.511, 10044.511]   # several: no choice
+    assert importer.one_drum_less("15", "") == []
 
 
 def test_screenshot_group_is_stored_per_scope(con, monkeypatch):
@@ -117,7 +139,7 @@ def test_screenshot_group_is_stored_per_scope(con, monkeypatch):
 
 
 def test_a_failing_read_is_reported_not_raised(con, monkeypatch):
-    def boom(data, two_pass=True):
+    def boom(data, **kw):
         raise RuntimeError("model not found")
     monkeypatch.setattr(gemma, "read_meter", boom)
     r = importer.run_job(con, "meter", [_photo(con, "IMG_20260502_070000123.jpg")])

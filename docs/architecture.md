@@ -143,7 +143,7 @@ the digits or the list of devices, `check_meter()` / `check_shelly()` test them,
 |---|---|---|
 | Pi, SD card: `/opt/energie-collector/collector.db` | `sample` (a row per plug and minute), `gas_pulse`, `gas_calib` | every night at 03:15 `sqlite3 .backup` to `/opt/energie-collector/backup/collector-Mon.db` … `-Sun.db` (seven days back); with `backup_rsync_target` also to the NAS |
 | Pi: `/opt/energie-collector/collector.toml` | devices (name → IP), interval, port, gas settings | written by Ansible from `deploy/inventory.yml` |
-| PC: `energie.db` (project folder, or `ENERGIE_DB`) | `shelly_counters` (synced counters), `meter_readings` (photos, manual, gas pulses), `shelly_periods` (24 h totals from screenshots), `pending_reads`, `settings` | a copy before every schema migration (`energie-backup-v<N>-<time>.db`) |
+| PC: `energie.db` (project folder, or `ENERGIE_DB`) | `shelly_counters` (synced counters), `meter_readings` (photos, manual, gas pulses), `shelly_periods` (24 h totals from screenshots), `pending_reads`, `settings`, `tariffs` (prices with the date they start) | a copy before every schema migration (`energie-backup-v<N>-<time>.db`) |
 | Pi, when the app runs there (role `app`): `/var/lib/energie/` | `energie.db` as above, uploaded photos and screenshots | `energie-<day>.db` with the nightly collector backup; photos and screenshots to the NAS |
 | PC: photo and screenshot folders (Settings, or `ENERGIE_PHOTOS` / `ENERGIE_SCREENSHOTS`) | the original images | the user's own |
 | PC: `deploy/inventory.yml` | the Pi's address and user, the plugs' names and addresses | local only |

@@ -7,15 +7,36 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import date
 
 import pandas as pd
 
 from energie import db
 
 
+# ---------- prices ----------
+
+def tariff_at(con, meter: str, day: date | None = None) -> dict:
+    """The price that holds on `day` (today by default): the last tariff that started on or before
+    it. Without one, the placeholder price (placeholder=True) until the bills' prices are entered."""
+    d = (day or date.today()).isoformat()
+    past = [t for t in db.tariffs(con, meter) if t["valid_from"] <= d]
+    if past:
+        return past[-1] | {"placeholder": False}
+    return {"meter": meter, "valid_from": None, "energy_eur_kwh": db.DEFAULT_PRICE_EUR_KWH[meter],
+            "base_eur_month": 0.0, "placeholder": True}
+
+
+def next_tariff(con, meter: str, day: date | None = None) -> dict | None:
+    """The next announced price change after `day`, if the user has entered one."""
+    d = (day or date.today()).isoformat()
+    future = [t for t in db.tariffs(con, meter) if t["valid_from"] > d]
+    return (future[0] | {"placeholder": False}) if future else None
+
+
 @dataclass
 class Prices:
-    electricity_eur_kwh: float
+    electricity_eur_kwh: float       # the price per kWh that holds today
     gas_eur_kwh: float
     gas_correction_factor: float     # "Zustandszahl" on a German gas bill
     gas_calorific_value: float       # "Brennwert", kWh per m3
@@ -25,8 +46,8 @@ class Prices:
         return self.gas_correction_factor * self.gas_calorific_value
 
     @classmethod
-    def from_db(cls, con) -> "Prices":
-        return cls(db.get_float(con, "electricity_eur_kwh"), db.get_float(con, "gas_eur_kwh"),
+    def from_db(cls, con, day: date | None = None) -> "Prices":
+        return cls(tariff_at(con, "electricity", day)["energy_eur_kwh"], tariff_at(con, "gas", day)["energy_eur_kwh"],
                    db.get_float(con, "gas_correction_factor"), db.get_float(con, "gas_calorific_value"))
 
 
@@ -143,14 +164,41 @@ def summary(con: sqlite3.Connection, p: Prices) -> dict:
     gas = overall_rate(con, "gas")
     cov = coverage(con)
     cov = cov[cov["full"]]
+    base = tariff_at(con, "electricity")["base_eur_month"]
     # gas is deliberately not extrapolated to a year: a few weeks are not representative
     return {
         "electricity": el,
         "gas": (gas | {"kwh_per_day": gas["per_day"] * p.gas_kwh_per_m3}) if gas else {},
         "coverage_mean": cov["coverage"].mean() if len(cov) else None,
         "unmetered_mean_kwh": cov["unmetered_kwh"].mean() if len(cov) else None,
-        "electricity_eur_year": el["per_year"] * p.electricity_eur_kwh if el else None,
+        "electricity_eur_year": el["per_year"] * p.electricity_eur_kwh + 12 * base if el else None,
     }
+
+
+# a yearly estimate needs this many days of readings: electricity runs much the same all year,
+# gas heats, so a few winter weeks say little about a year
+MIN_DAYS_FOR_YEAR = {"electricity": 14, "gas": 330}
+
+
+def cost_outlook(con: sqlite3.Connection, p: Prices, day: date | None = None) -> dict:
+    """Yearly cost and monthly advance per meter: the consumption so far extrapolated to a year,
+    at the price that holds now and at the next announced price (the advance to pay from then)."""
+    out = {}
+    for meter in db.METERS:
+        rate = overall_rate(con, meter)
+        if not rate or rate["days"] < MIN_DAYS_FOR_YEAR[meter]:
+            continue
+        kwh_year = rate["per_year"] * (p.gas_kwh_per_m3 if meter == "gas" else 1)
+
+        def cost(t: dict) -> dict:
+            eur = kwh_year * t["energy_eur_kwh"] + 12 * t["base_eur_month"]
+            return {k: t[k] for k in ("valid_from", "energy_eur_kwh", "base_eur_month", "placeholder")} | {
+                "eur_year": eur, "eur_month": eur / 12}
+
+        nxt = next_tariff(con, meter, day)
+        out[meter] = {"kwh_year": kwh_year, "days": rate["days"], "now": cost(tariff_at(con, meter, day)),
+                      "next": cost(nxt) if nxt else None}
+    return out
 
 
 # ---------- collector data (cumulative counters) ----------

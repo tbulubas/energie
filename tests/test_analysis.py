@@ -32,6 +32,29 @@ def test_dense_readings_become_one_interval_per_day(con):
     assert len(iv) == 1 and iv["per_24h"].iloc[0] == pytest.approx(1.0)
 
 
+def test_the_price_of_a_day_is_the_last_one_started(con):
+    from datetime import date
+
+    from energie import db
+    assert A.tariff_at(con, "electricity", date(2026, 5, 1))["placeholder"] is True       # nothing entered yet
+    db.put_tariff(con, "electricity", "2025-03-01", 0.352, 11.0)
+    db.put_tariff(con, "electricity", "2026-10-01", 0.418, 15.0)
+    at = lambda d: A.tariff_at(con, "electricity", d)["energy_eur_kwh"]
+    assert at(date(2025, 2, 28)) == db.DEFAULT_PRICE_EUR_KWH["electricity"]
+    assert at(date(2025, 3, 1)) == 0.352 and at(date(2026, 9, 30)) == 0.352 and at(date(2026, 10, 1)) == 0.418
+    assert A.next_tariff(con, "electricity", date(2026, 9, 15))["valid_from"] == "2026-10-01"
+    assert A.next_tariff(con, "electricity", date(2026, 10, 1)) is None
+    assert A.Prices.from_db(con, date(2026, 10, 2)).electricity_eur_kwh == 0.418
+
+
+def test_gas_is_not_turned_into_a_year_from_a_few_weeks(con):
+    add_readings(con, "gas", [("2026-10-01 07:00", 100.0), ("2026-11-01 07:00", 150.0)])
+    add_readings(con, "electricity", [("2026-10-01 07:00", 1000.0), ("2026-10-08 07:00", 1070.0)])
+    assert A.cost_outlook(con, prices(con)) == {}                   # 31 days of gas, 7 of electricity
+    add_readings(con, "electricity", [("2026-10-15 07:00", 1140.0)])
+    assert list(A.cost_outlook(con, prices(con))) == ["electricity"]
+
+
 def test_gas_kwh_uses_the_bill_factors(con):
     from energie import db
     db.set_setting(con, "gas_correction_factor", "0.95")

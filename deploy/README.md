@@ -90,6 +90,8 @@ time takes a few minutes) and starts the service `energie-app` at `http://<Pi>:8
 - **Moving from the PC:** copy `energie.db` to `/var/lib/energie/` (owner `energie`) while both apps
   are stopped, and empty the photo and screenshot folders in *Settings*: the Pi uses its own.
 - The nightly backup then also takes `energie-<day>.db`, and the NAS copy the photos and screenshots.
+- **From a phone** in the home network: `http://<Pi>:8510` → *Readings* → *Photo of a meter*; the photo
+  is stored on the Pi and read by Gemma on the PC right away. *Add to home screen* gives it an icon.
 
 ## Database and backup
 

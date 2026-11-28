@@ -17,12 +17,13 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-from energie import db, gemma
+from energie import db, gemma, importer
 
 TOLERANCE = {"electricity": 0.15, "gas": 0.0015}     # +- one unit of the last digit (a rolling drum)
 
 
-def _meters(truth: Path, photos: Path, limit: int | None, two_pass: bool) -> list[dict]:
+def _meters(truth: Path, photos: Path, limit: int | None, two_pass: bool,
+            decimals: dict[str, int] | None = None) -> list[dict]:
     out = []
     rows = list(csv.DictReader((truth / "meter_readings.csv").open(encoding="utf-8")))[:limit]
     for t in rows:
@@ -32,7 +33,7 @@ def _meters(truth: Path, photos: Path, limit: int | None, two_pass: bool) -> lis
             continue
         t0 = time.time()
         try:
-            r = gemma.read_meter(p.read_bytes(), two_pass=two_pass)
+            r = gemma.read_meter(p.read_bytes(), two_pass=two_pass, decimals=decimals)
             got, kind, err = r["value"], r["meter"], ""
         except Exception as e:  # noqa: BLE001
             got, kind, err = None, "", f"{type(e).__name__}: {e}"
@@ -96,12 +97,13 @@ def run(truth: Path, only: str | None = None, limit: int | None = None, two_pass
     db.init_db()
     con = db.get_db()
     photos, shots = db.folder(con, "photos_dir"), db.folder(con, "screenshots_dir")
+    decimals = importer.meter_decimals(con)
     con.close()
     results: list[dict] = []
     if only in (None, "meter"):
         if not photos:
             raise SystemExit("No photos folder: set it on the Settings tab or with ENERGIE_PHOTOS.")
-        results += _meters(truth, photos, limit, two_pass)
+        results += _meters(truth, photos, limit, two_pass, decimals)
     if only in (None, "shelly"):
         if not shots:
             raise SystemExit("No screenshots folder: set it on the Settings tab or with ENERGIE_SCREENSHOTS.")

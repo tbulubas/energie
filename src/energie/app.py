@@ -2,6 +2,7 @@
 # Use requires prior written permission; see LICENSE.
 
 """Local home energy web app. Run: python -m energie -> http://localhost:8510"""
+import asyncio
 import json
 import threading
 from contextlib import asynccontextmanager
@@ -81,7 +82,14 @@ def _records(df) -> list[dict]:
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    # no-cache: the browser asks every time (a cheap ETag check), so a phone gets a new version
+    # of the page right after an update instead of a stale copy
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse(STATIC / "icon-192.png")
 
 
 @app.get("/api/status")
@@ -112,6 +120,7 @@ def overview():
         el_iv = A.meter_intervals(con, "electricity")
         gas = A.gas_intervals(con, p)
         found = A.insights(con, p)
+        outlook = A.cost_outlook(con, p)
     finally:
         con.close()
     el, gs = sm["electricity"], sm["gas"]
@@ -129,6 +138,7 @@ def overview():
                 for _, r in gas.iterrows()],
         "insights": found,
         "gas_kwh_per_m3": p.gas_kwh_per_m3,
+        "outlook": outlook,
     }
 
 
@@ -141,7 +151,8 @@ def commentary(lang: str = "en"):
         p = A.Prices.from_db(con)
         facts = {"summary": A.summary(con, p), "findings": A.insights(con, p),
                  "devices": _records(A.device_stats(con, p)),
-                 "prices": {"electricity_eur_kwh": p.electricity_eur_kwh, "gas_eur_kwh": p.gas_eur_kwh}}
+                 "prices_today": {"electricity_eur_kwh": p.electricity_eur_kwh, "gas_eur_kwh": p.gas_eur_kwh},
+                 "yearly_cost_and_monthly_advance": A.cost_outlook(con, p)}
     finally:
         con.close()
     return {"text": gemma.commentary(facts, lang)}
@@ -308,8 +319,19 @@ def progress():
     return JOB
 
 
+def _read_now(path: Path) -> dict:
+    """Read one meter photo right away (the phone waits for the answer)."""
+    con = db.get_db()
+    try:
+        return importer.run_job(con, "meter", [path])
+    finally:
+        con.close()
+
+
 @app.post("/api/upload")
-async def upload(kind: str = Form(...), file: UploadFile = File(...)):
+async def upload(kind: str = Form(...), file: UploadFile = File(...), read: bool = Form(False)):
+    """Store an image in its folder. With read=true a meter photo is read by Gemma at once and the
+    result (stored, or waiting for review) comes back; without Gemma it waits for the Import tab."""
     key = {"meter": "photos_dir", "shelly": "screenshots_dir"}.get(kind)
     name = Path(file.filename or "").name
     if not key or Path(name).suffix.lower() not in importer.IMG_EXT:
@@ -322,8 +344,15 @@ async def upload(kind: str = Form(...), file: UploadFile = File(...)):
     if not folder:
         raise HTTPException(400, {"code": "no_folder"})
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / name).write_bytes(await file.read())
-    return {"saved": name}
+    data = await file.read()
+    name = importer.upload_name(folder, name, data)
+    (folder / name).write_bytes(data)
+    if not (read and kind == "meter"):
+        return {"saved": name}
+    if not gemma.available():
+        return {"saved": name, "result": None}
+    # in a worker thread: reading takes a while and must not hold up the other requests
+    return {"saved": name, "result": await asyncio.to_thread(_read_now, folder / name)}
 
 
 # ---------- Collector ----------
@@ -372,6 +401,52 @@ def get_settings():
         con.close()
 
 
+# ---------- Tariffs (prices with the date they start) ----------
+
+class TariffIn(BaseModel):
+    meter: str
+    valid_from: str                 # 'YYYY-MM-DD'
+    energy_eur_kwh: float
+    base_eur_month: float = 0.0
+
+
+@app.get("/api/tariffs")
+def get_tariffs():
+    con = db.get_db()
+    try:
+        return {"tariffs": db.tariffs(con), "defaults": db.DEFAULT_PRICE_EUR_KWH}
+    finally:
+        con.close()
+
+
+@app.put("/api/tariffs")
+def put_tariff(t: TariffIn):
+    if t.meter not in db.METERS:
+        raise HTTPException(400, {"code": "bad_meter"})
+    try:
+        day = datetime.strptime(t.valid_from.strip(), "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, {"code": "bad_date"})
+    if not (0 < t.energy_eur_kwh < 10) or not (0 <= t.base_eur_month < 1000):
+        raise HTTPException(400, {"code": "bad_number", "info": "price"})
+    con = db.get_db()
+    try:
+        db.put_tariff(con, t.meter, day.isoformat(), t.energy_eur_kwh, t.base_eur_month)
+        return {"tariffs": db.tariffs(con)}
+    finally:
+        con.close()
+
+
+@app.delete("/api/tariffs")
+def delete_tariff(meter: str, valid_from: str):
+    con = db.get_db()
+    try:
+        db.delete_tariff(con, meter, valid_from)
+        return {"tariffs": db.tariffs(con)}
+    finally:
+        con.close()
+
+
 @app.put("/api/settings")
 def put_settings(values: dict[str, str]):
     unknown = set(values) - set(db.DEFAULT_SETTINGS)
@@ -382,7 +457,10 @@ def put_settings(values: dict[str, str]):
     for k, v in values.items():
         if k in numeric and str(v).strip() != "":            # empty = back to the default
             try:
-                if float(str(v).replace(",", ".")) <= 0:
+                if k.startswith("decimals_"):                # a count of drums: 0 to 4
+                    if str(v).strip() not in ("0", "1", "2", "3", "4"):
+                        raise ValueError
+                elif float(str(v).replace(",", ".")) <= 0:
                     raise ValueError
             except ValueError:
                 raise HTTPException(400, {"code": "bad_number", "info": k})

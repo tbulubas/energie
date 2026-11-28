@@ -46,6 +46,11 @@ before and after it, the increase per day stays below a limit, and in a Shelly s
 add up to their room and the rooms to the house. A result that fails a check waits on the *Review*
 tab next to its photo, where you correct it with one click.
 
+Gemma reads all digits of the counter in one row; the app puts the decimal point, from the number
+of red drums in the *Settings* (1 on an electricity meter, 3 on a gas meter, by default). A drum
+caught between two digits is sometimes read twice (`…88`): when leaving out one of the pair gives
+exactly one value that fits the readings around it, that value is stored with a note.
+
 ![Review: a misread meter photo next to the check it failed](docs/images/review.png)
 
 ## Screenshots
@@ -164,14 +169,25 @@ enough on your own photos (below).
 The app speaks English, German and Slovak. It starts in your browser's language (English otherwise);
 switch with the selector at the top right.
 
-1. **Settings** — the folders with meter photos and Shelly screenshots, the prices and the gas factors
-   from your bill (Zustandszahl and Brennwert turn m³ into kWh), and the collector address.
+1. **Settings** — the prices from your supplier's letters and bills, each with the date it starts
+   (price per kWh and the monthly standing charge; an announced change can be entered ahead), the
+   gas factors (Zustandszahl and Brennwert turn m³ into kWh), the folders with meter photos and
+   Shelly screenshots, and the collector address. The *Overview* turns the consumption so far into
+   a yearly cost and the **monthly advance** at the next announced price (electricity after two
+   weeks of readings; gas only after almost a year, as heating makes a few weeks unrepresentative).
 2. **Import** — put new photos and screenshots into the folders (or upload them on the tab) and press
    *Read with Gemma*. The time comes from the file name (`IMG_20261109_073012…`,
    `Screenshot_20261109-073012…`), else from the photo's EXIF data. Screenshots taken within ten
    minutes belong to the same 24 h window.
 3. **Review** — what failed a check; correct and accept, or reject.
 4. **Overview** and **Devices** — the results.
+
+**From a phone**: open the app in the home network (`http://<PC or Pi>:8510`; it has no login, so
+never forward the port to the internet). On *Readings*, *Photo of a meter* opens the camera; Gemma
+reads the picture at once (which meter, which reading), the checks test it, and the answer says
+whether it was stored or waits on *Review*. Without Gemma the photo waits for the *Import* tab. The
+time field below starts at "now" for a reading typed in. *Add to home screen* in the browser's menu
+puts an icon on the phone that opens *Readings*.
 
 Hand-checked readings can be loaded from CSV (`meter_readings.csv`: `ts,meter,value,source_file,note`;
 `shelly_readings.csv`: `window_end,source,scope,floor,name,energy_wh`):

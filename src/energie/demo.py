@@ -72,6 +72,10 @@ def build(folder: Path, today: date | None = None) -> Path:
     con = db.get_db()
     db.set_setting(con, "photos_dir", str(photos))
     db.set_setting(con, "screenshots_dir", str(shots))
+    # invented prices: one that holds and a change announced for next month
+    db.put_tariff(con, "electricity", f"{today - timedelta(days=200):%Y-%m-%d}", 0.35, 13.0)
+    db.put_tariff(con, "electricity", f"{(today.replace(day=1) + timedelta(days=32)).replace(day=1):%Y-%m-%d}", 0.41, 15.5)
+    db.put_tariff(con, "gas", f"{today - timedelta(days=200):%Y-%m-%d}", 0.12, 14.0)
 
     start = datetime.combine(today - timedelta(days=DAYS), datetime.min.time())
     el, gas = 51234.0, 8123.456

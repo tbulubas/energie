@@ -11,6 +11,7 @@ Checks (no LLM):
 Issues are codes with numbers ({"code": "...", ...}); the frontend words them.
 """
 import difflib
+import io
 import json
 import re
 from datetime import datetime, timedelta
@@ -24,19 +25,43 @@ TS_RE = re.compile(r"(20\d{6})[_-](\d{6})")       # IMG_20261010_074140..., Scre
 
 # ---------- files ----------
 
+def exif_time(image) -> datetime | None:
+    """DateTimeOriginal of a photo (a path or a file object), or None."""
+    try:
+        from PIL import Image
+        exif = Image.open(image).getexif().get_ifd(0x8769)
+        if 36867 in exif:                                       # DateTimeOriginal
+            return datetime.strptime(exif[36867], "%Y:%m:%d %H:%M:%S")
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def file_ts(path: Path) -> datetime:
     """Time the photo was taken: from the file name, else EXIF, else the file's mtime."""
     m = TS_RE.search(path.name)
     if m:
         return datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
-    try:
-        from PIL import Image
-        exif = Image.open(path).getexif().get_ifd(0x8769)
-        if 36867 in exif:                                       # DateTimeOriginal
-            return datetime.strptime(exif[36867], "%Y:%m:%d %H:%M:%S")
-    except Exception:  # noqa: BLE001
-        pass
-    return datetime.fromtimestamp(path.stat().st_mtime)
+    return exif_time(path) or datetime.fromtimestamp(path.stat().st_mtime)
+
+
+def upload_name(folder: Path, name: str, data: bytes, now: datetime | None = None) -> str:
+    """The file name an uploaded image is stored under.
+
+    A phone's browser often sends a camera picture as 'image.jpg' or a random number: such a name
+    gets the time the photo was taken (EXIF, else now), so the reading has its time and a second
+    picture does not overwrite the first. A different file under a name already taken gets a suffix;
+    the same file again keeps its name."""
+    p = Path(name)
+    stem, ext = p.stem, p.suffix.lower()
+    if not TS_RE.search(stem):
+        ts = exif_time(io.BytesIO(data)) or now or datetime.now()
+        stem = f"IMG_{ts:%Y%m%d_%H%M%S}"
+    candidate, n = stem + ext, 1
+    while (folder / candidate).exists() and (folder / candidate).read_bytes() != data:
+        n += 1
+        candidate = f"{stem}-{n}{ext}"
+    return candidate
 
 
 def new_files(con) -> dict[str, list[Path]]:
@@ -104,13 +129,42 @@ def check_meter(con, meter: str, ts: datetime, value: float) -> list[dict]:
     return issues
 
 
+def meter_decimals(con) -> dict[str, int]:
+    """How many digits of each counter are decimals (Settings)."""
+    return {m: int(db.get_float(con, f"decimals_{m}")) for m in db.METERS}
+
+
+def one_drum_less(black: str, red: str) -> list[float]:
+    """The values the counter shows if one drum was read twice: a drum turning between two digits
+    can come back as the same digit twice ('88'); one of the pair is left out (the number of
+    decimals stays)."""
+    digits, k = black + red, len(red)
+    out = set()
+    for i in range(len(digits) - 1):
+        if digits[i] == digits[i + 1]:
+            d = digits[:i] + digits[i + 1:]
+            if len(d) > k:
+                out.add(gemma.digits_value(d[:len(d) - k], d[len(d) - k:]))
+    return sorted(out)
+
+
 def process_meter(con, path: Path) -> dict:
     ts = file_ts(path)
-    r = gemma.read_meter(path.read_bytes())
+    r = gemma.read_meter(path.read_bytes(), decimals=meter_decimals(con))
     issues = check_meter(con, r["meter"], ts, r["value"])
     if r.get("rolling"):
         r["note"] = "rolling digit"
-    return store(con, "meter", path.name, ts, r, issues)
+    # A drum turning between two digits is now and then read twice: one digit too many, a value ten
+    # times too large. When exactly one value with that drum once fits the neighbouring readings, it
+    # is the reading (decided by the checks, not by the model); anything else waits for review.
+    if any(i["code"] in ("increase_too_large", "counter_decreases") for i in issues):
+        fits = [v for v in one_drum_less(r.get("black_digits", ""), r.get("red_digits", ""))
+                if not check_meter(con, r["meter"], ts, v)]
+        if len(fits) == 1:
+            r.update(read_value=r["value"], value=fits[0], note="extra digit dropped")
+            issues = []
+    return {**store(con, "meter", path.name, ts, r, issues), "meter": r["meter"], "value": r["value"],
+            "ts": ts.strftime("%Y-%m-%d %H:%M")}
 
 
 # ---------- Shelly ----------
